@@ -68,11 +68,11 @@ def build_dataloader(dataset_train, dataset_val, args):
         output_sampler = sampler_train
 
     collate_fn = build_collate_fn(args.COLLECT_FN)
-    data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train,
-                                   collate_fn=collate_fn, num_workers=args.num_workers,
+    data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train, num_workers=0,
+                                   collate_fn=collate_fn, # num_workers=args.num_workers,
                                    use_shared_memory=True)
-    data_loader_val = DataLoader(dataset_val, batch_size=args.batch_size, 
+    data_loader_val = DataLoader(dataset_val, batch_size=args.batch_size, num_workers=0,
                                  # sampler=sampler_val,
-                                 drop_last=False, collate_fn=collate_fn, num_workers=args.num_workers,
+                                 drop_last=False, collate_fn=collate_fn, # num_workers=args.num_workers,
                                  use_shared_memory=True)
     return data_loader_train, data_loader_val, output_sampler

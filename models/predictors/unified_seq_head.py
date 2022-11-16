@@ -13,7 +13,7 @@ from util.misc import inverse_sigmoid
 from .classifiers import build_label_classifier
 from .seq_postprocess import build_sequence_postprocess
 from ..transformer.attention_modules import DeformableDecoderLayer
-from models.ops.functions import MSDeformAttnFunction
+# from models.ops.functions import MSDeformAttnFunction
 from models.losses.classwise_criterion import ClasswiseCriterion
 
 

@@ -13,7 +13,8 @@ def item_cuda(item, device):
     elif isinstance(item, dict):
         return {k: item_cuda(v, device) for k, v in item.items()}
     elif isinstance(item, paddle.Tensor):
-        return item.to(device, non_blocking=True)
+        # return item.to(device, non_blocking=True)
+        return item
     else:
         raise TypeError
 
@@ -23,7 +24,7 @@ def to_cuda(samples, targets, device):
     return samples, targets
 
 class data_prefetcher():
-    def __init__(self, loader, device, prefetch=True):
+    def __init__(self, loader, device="cuda", prefetch=True):
         # self.loader = iter(loader)
         self.loader = loader()
         self.prefetch = prefetch
@@ -46,7 +47,7 @@ class data_prefetcher():
         # Need to make sure the memory allocated for next_* is not still in use by the main stream
         # at the time we start copying to next_*:
         # self.stream.wait_stream(paddle.cuda.current_stream())
-        with paddle.device.cuda.Stream(self.stream):
+        with paddle.device.cuda.stream_guard(self.stream):
             self.next_samples, self.next_targets = to_cuda(self.next_samples, self.next_targets, self.device)
             # more code for the alternative if record_stream() doesn't work:
             # copy_ will record the use of the pinned source tensor in this side stream.
@@ -66,11 +67,13 @@ class data_prefetcher():
             samples = self.next_samples
             targets = self.next_targets
             if samples is not None:
-                samples.record_stream(paddle.device.cuda.current_stream())
+                # samples.record_stream(paddle.device.cuda.current_stream())
+                pass
             if targets is not None:
                 for t in targets:
                     for k, v in t.items():
-                        v.record_stream(paddle.device.cuda.current_stream())
+                        # v.record_stream(paddle.device.cuda.current_stream())
+                        pass
             self.preload()
         else:
             try:

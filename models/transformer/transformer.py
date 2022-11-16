@@ -80,8 +80,8 @@ class Transformer(nn.Layer):
         _, H, W = mask.shape
         valid_H = paddle.sum(~mask[:, :, 0], 1)
         valid_W = paddle.sum(~mask[:, 0, :], 1)
-        valid_ratio_h = valid_H.float() / H
-        valid_ratio_w = valid_W.float() / W
+        valid_ratio_h = valid_H.cast("float32") / H
+        valid_ratio_w = valid_W.cast("float32") / W
         valid_ratio = paddle.stack([valid_ratio_w, valid_ratio_h], -1)
         return valid_ratio
 
@@ -90,10 +90,10 @@ class Transformer(nn.Layer):
         reference_points_list = []
         for lvl, (H_, W_) in enumerate(spatial_shapes):
 
-            ref_y, ref_x = paddle.meshgrid(paddle.linspace(0.5, H_ - 0.5, H_, dtype=paddle.float32, device=device),
-                                          paddle.linspace(0.5, W_ - 0.5, W_, dtype=paddle.float32, device=device))
-            ref_y = ref_y.reshape(-1)[None] / (valid_ratios[:, None, lvl, 1] * H_)
-            ref_x = ref_x.reshape(-1)[None] / (valid_ratios[:, None, lvl, 0] * W_)
+            ref_y, ref_x = paddle.meshgrid(paddle.linspace(0.5, H_ - 0.5, H_, dtype="float32"),
+                                          paddle.linspace(0.5, W_ - 0.5, W_, dtype="float32"))
+            ref_y = ref_y.reshape([-1])[None] / (valid_ratios[:, None, lvl, 1] * H_) # dtype warning
+            ref_x = ref_x.reshape([-1])[None] / (valid_ratios[:, None, lvl, 0] * W_)
             ref = paddle.stack((ref_x, ref_y), -1)
             reference_points_list.append(ref)
         reference_points = paddle.concat(reference_points_list, 1)
@@ -110,21 +110,35 @@ class Transformer(nn.Layer):
             spatial_shape = (h, w)
             spatial_shapes.append(spatial_shape)
             if self.encoder is not None:
-                pos_embed = self.position_embed(NestedTensor(src, mask)).to(src.dtype)
-                pos_embed = pos_embed.flatten(2).transpose(1, 2)
-                lvl_pos_embed = pos_embed + self.level_embed[lvl].view(1, 1, -1)
+                pos_embed = self.position_embed(NestedTensor(src, mask)).cast(src.dtype)
+                # pos_embed = pos_embed.flatten(2).transpose([1, 2])
+                pos_embed = pos_embed.flatten(2).transpose([0, 2, 1])
+                lvl_pos_embed = pos_embed + self.level_embed[lvl].reshape([1, 1, -1])
                 lvl_pos_embed_flatten.append(lvl_pos_embed)
-            src = src.flatten(2).transpose(1, 2)
+            # src = src.flatten(2).transpose([1, 2])
+            src = src.flatten(2).transpose([0, 2, 1])
+            
+            # Paddle can't handle bool flatten
+            # https://github.com/PaddlePaddle/Paddle/issues/47995
+            # mask = mask.flatten(1)
+            
+            mask = mask.cast("int32")
             mask = mask.flatten(1)
+            mask = mask.cast("bool")
+            
+            
             src_flatten.append(src)
             mask_flatten.append(mask)
         src_flatten = paddle.concat(src_flatten, 1)
         mask_flatten = paddle.concat(mask_flatten, 1)
         lvl_pos_embed_flatten = paddle.concat(lvl_pos_embed_flatten, 1) if self.encoder is not None else None
         spatial_shapes = paddle.to_tensor(spatial_shapes, dtype="int64")
-        level_start_index = paddle.concat((spatial_shapes.new_zeros((1, )), spatial_shapes.prod(1).cumsum(0)[:-1]))
+        # level_start_index = paddle.concat((spatial_shapes.new_zeros((1, )), spatial_shapes.prod(1).cumsum(0)[:-1]))
+        level_start_index = paddle.concat((paddle.zeros((1,), dtype=spatial_shapes.dtype),
+                                           spatial_shapes.prod(1).cumsum(0)[:-1]))
+        
         valid_ratios = paddle.stack([self.get_valid_ratio(m) for m in masks], 1)
-        reference_points_enc = self.get_reference_points(spatial_shapes, valid_ratios, device=src.device)
+        reference_points_enc = self.get_reference_points(spatial_shapes, valid_ratios, device=None)
         enc_kwargs = dict(spatial_shapes = spatial_shapes,
                           level_start_index = level_start_index,
                           reference_points = reference_points_enc,

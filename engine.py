@@ -40,7 +40,7 @@ def convert_to_device(src, device):
 
 
 def train_one_epoch(model: nn.Layer, data_loader: Iterable, optimizer: paddle.optimizer.Optimizer,
-                    device: None, epoch: int, max_norm: float = 0, preprocessor=None):
+                    device: str="cuda", epoch: int=100, max_norm: float = 0, preprocessor=None):
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))

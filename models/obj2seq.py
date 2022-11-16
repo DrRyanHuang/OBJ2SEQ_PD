@@ -104,7 +104,7 @@ class Obj2Seq(nn.Layer):
                 else:
                     src = self.input_proj[l](srcs[-1])
                 m = samples.mask
-                mask = F.interpolate(m[None].float(), size=src.shape[-2:]).to(paddle.bool)[0]
+                mask = F.interpolate(m[None].cast("float32"), size=src.shape[-2:]).cast("bool")[0]
                 srcs.append(src)
                 masks.append(mask)
 

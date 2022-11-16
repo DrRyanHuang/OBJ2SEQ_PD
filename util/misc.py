@@ -240,7 +240,8 @@ class MetricLogger(object):
         iter_time = SmoothedValue(fmt='{avg:.4f}')
         data_time = SmoothedValue(fmt='{avg:.4f}')
         space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
-        if paddle.cuda.is_available():
+        # if paddle.cuda.is_available():
+        if True:
             log_msg = self.delimiter.join([
                 header,
                 '[{0' + space_fmt + '}/{1}]',
@@ -375,10 +376,10 @@ class NestedTensor(object):
             cast_mask = None
         return NestedTensor(cast_tensor, cast_mask)
 
-    # def record_stream(self, *args, **kwargs):
-    #     self.tensors.record_stream(*args, **kwargs)
-    #     if self.mask is not None:
-    #         self.mask.record_stream(*args, **kwargs)
+    def record_stream(self, *args, **kwargs):
+        self.tensors.record_stream(*args, **kwargs)
+        if self.mask is not None:
+            self.mask.record_stream(*args, **kwargs)
 
     def decompose(self):
         return self.tensors, self.mask

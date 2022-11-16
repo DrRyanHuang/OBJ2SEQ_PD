@@ -125,10 +125,10 @@ class FrozenBatchNorm2d(nn.Layer):
     def forward(self, x):
         # move reshapes to the beginning
         # to make it fuser-friendly
-        w = self.weight.reshape(1, -1, 1, 1)
-        b = self.bias.reshape(1, -1, 1, 1)
-        rv = self.running_var.reshape(1, -1, 1, 1)
-        rm = self.running_mean.reshape(1, -1, 1, 1)
+        w = self.weight.reshape([1, -1, 1, 1])
+        b = self.bias.reshape([1, -1, 1, 1])
+        rv = self.running_var.reshape([1, -1, 1, 1])
+        rm = self.running_mean.reshape([1, -1, 1, 1])
         eps = self.eps
         scale = w * (rv + eps).rsqrt()
         bias = b - rm * scale
@@ -159,7 +159,7 @@ class BackboneBase(nn.Layer):
         for name, x in xs.items():
             m = tensor_list.mask
             assert m is not None
-            mask = F.interpolate(m[None].float(), size=x.shape[-2:]).to(paddle.bool)[0]
+            mask = F.interpolate(m[None].cast("float32"), size=x.shape[-2:]).cast("bool")[0]
             out.append(NestedTensor(x, mask))
         return out
 

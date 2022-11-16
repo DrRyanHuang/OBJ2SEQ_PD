@@ -6,10 +6,14 @@ data/
 *.swp
 
 # Deformable
-models/ops/
+# models/ops/
+models/ops/build
+models/ops/dist
+models/ops/MultiScaleDeformableAttention.egg-info
 
 # PHOENIX
 batchscript-*
 phoenix-slurm-*
 
 data/*
+models/test_pd_op/*

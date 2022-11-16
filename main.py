@@ -167,7 +167,7 @@ def main(args):
     print(args)
 
     # device = paddle.device(args.device)
-    device = None
+    device = "cuda"
 
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
@@ -328,4 +328,5 @@ if __name__ == '__main__':
     config = get_config(args)
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    
     main(args)

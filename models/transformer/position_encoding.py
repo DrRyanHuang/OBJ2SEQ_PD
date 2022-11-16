@@ -40,21 +40,21 @@ class PositionEmbeddingSine(nn.Layer):
         mask = tensor_list.mask
         assert mask is not None
         not_mask = ~mask
-        y_embed = not_mask.cumsum(1, dtype=paddle.float32)
-        x_embed = not_mask.cumsum(2, dtype=paddle.float32)
+        y_embed = not_mask.cumsum(1, dtype="float32")
+        x_embed = not_mask.cumsum(2, dtype="float32")
         if self.normalize:
             eps = 1e-6
             y_embed = (y_embed - 0.5) / (y_embed[:, -1:, :] + eps) * self.scale
             x_embed = (x_embed - 0.5) / (x_embed[:, :, -1:] + eps) * self.scale
 
-        dim_t = paddle.arange(self.num_pos_feats, dtype=paddle.float32, device=x.device)
+        dim_t = paddle.arange(self.num_pos_feats, dtype="int32")
         dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
 
         pos_x = x_embed[:, :, :, None] / dim_t
         pos_y = y_embed[:, :, :, None] / dim_t
         pos_x = paddle.stack((pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), axis=4).flatten(3)
         pos_y = paddle.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), axis=4).flatten(3)
-        pos = paddle.cat((pos_y, pos_x), dim=3).transpose([0, 3, 1, 2])
+        pos = paddle.concat((pos_y, pos_x), axis=3).transpose([0, 3, 1, 2])
         return pos
 
 

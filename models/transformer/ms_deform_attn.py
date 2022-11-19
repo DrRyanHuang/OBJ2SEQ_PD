@@ -18,7 +18,8 @@ from paddle import nn
 import paddle.nn.functional as F
 # from torch.nn.init import xavier_uniform_, constant_
 
-from ..functions import MSDeformAttnFunction
+# from ..functions import MSDeformAttnFunction
+from .ppdet_transformer_utils import deformable_attention_core_func
 
 
 def masked_fill(x, mask, value):
@@ -125,13 +126,13 @@ class MSDeformAttn(nn.Layer):
             value = self.value_proj(input_flatten)
             if input_padding_mask is not None:
                 # value = value.masked_fill(input_padding_mask[..., None], float(0))
-                value = masked_fill(value, input_padding_mask[..., None], float(0))
+                value = masked_fill(value, input_padding_mask[..., None], float(0)) # 给 value 填0
                 
-            value = value.reshape([N, Len_in, self.n_heads, self.d_model // self.n_heads])
+            value = value.reshape([N, Len_in, self.n_heads, self.d_model // self.n_heads]) # why reshape
 
             if cs_batch is not None:
                 value = paddle.concat([
-                    v.expand(cs ,-1, -1, -1) for cs, v in zip(cs_batch, value)
+                    v.expand([cs ,-1, -1, -1]) for cs, v in zip(cs_batch, value)
                 ]) # cs_all, *, *, *
                 N = value.shape[0]
         else:
@@ -143,7 +144,7 @@ class MSDeformAttn(nn.Layer):
         attention_weights = F.softmax(attention_weights, -1).reshape([N, Len_q, self.n_heads, self.n_levels, self.n_points])
         # N, Len_q, n_heads, n_levels, n_points, 2
         if reference_points.shape[-1] == 2:
-            offset_normalizer = paddle.stack([input_spatial_shapes[..., 1], input_spatial_shapes[..., 0]], -1)
+            offset_normalizer = paddle.stack([input_spatial_shapes[..., 1], input_spatial_shapes[..., 0]], -1) # change left and right
             sampling_locations = reference_points[:, :, None, :, None, :] \
                                  + sampling_offsets / offset_normalizer[None, None, None, :, None, :]
         elif reference_points.shape[-1] == 4:
@@ -151,8 +152,16 @@ class MSDeformAttn(nn.Layer):
                                  + sampling_offsets / self.n_points * reference_points[:, :, None, :, None, 2:] * 0.5
         else:
             raise ValueError(
-                'Last dim of reference_points must be 2 or 4, but get {} instead.'.format(reference_points.shape[-1]))
-        output = MSDeformAttnFunction.apply(
-            value, input_spatial_shapes, input_level_start_index, sampling_locations, attention_weights, self.im2col_step)
+                'Last axis of reference_points must be 2 or 4, but get {} instead.'.format(reference_points.shape[-1]))
+        # output = MSDeformAttnFunction.apply(
+        #     value, input_spatial_shapes, input_level_start_index, sampling_locations, attention_weights, self.im2col_step)
+        output = deformable_attention_core_func(
+            value, 
+            input_spatial_shapes, 
+            # input_level_start_index, 
+            sampling_locations, 
+            attention_weights, 
+            # self.im2col_step
+        )
         output = self.output_proj(output)
         return output

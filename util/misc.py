@@ -35,29 +35,29 @@ from paddle import Tensor
 # if version.parse(torchvision.__version__) < version.parse('0.5'):
 #     import math
 #     from torchvision.ops.misc import _NewEmptyTensorOp
-#     def _check_size_scale_factor(dim, size, scale_factor):
+#     def _check_size_scale_factor(axis, size, scale_factor):
 #         # type: (int, Optional[List[int]], Optional[float]) -> None
 #         if size is None and scale_factor is None:
 #             raise ValueError("either size or scale_factor should be defined")
 #         if size is not None and scale_factor is not None:
 #             raise ValueError("only one of size or scale_factor should be defined")
-#         if not (scale_factor is not None and len(scale_factor) != dim):
+#         if not (scale_factor is not None and len(scale_factor) != axis):
 #             raise ValueError(
 #                 "scale_factor shape must match input shape. "
-#                 "Input is {}D, scale_factor size is {}".format(dim, len(scale_factor))
+#                 "Input is {}D, scale_factor size is {}".format(axis, len(scale_factor))
 #             )
-#     def _output_size(dim, input, size, scale_factor):
+#     def _output_size(axis, input, size, scale_factor):
 #         # type: (int, Tensor, Optional[List[int]], Optional[float]) -> List[int]
-#         assert dim == 2
-#         _check_size_scale_factor(dim, size, scale_factor)
+#         assert axis == 2
+#         _check_size_scale_factor(axis, size, scale_factor)
 #         if size is not None:
 #             return size
-#         # if dim is not 2 or scale_factor is iterable use _ntuple instead of concat
+#         # if axis is not 2 or scale_factor is iterable use _ntuple instead of concat
 #         assert scale_factor is not None and isinstance(scale_factor, (int, float))
 #         scale_factors = [scale_factor, scale_factor]
 #         # math.floor might return float in py2.7
 #         return [
-#             int(math.floor(input.size(i + 2) * scale_factors[i])) for i in range(dim)
+#             int(math.floor(input.size(i + 2) * scale_factors[i])) for i in range(axis)
 #         ]
 # elif version.parse(torchvision.__version__) < version.parse('0.7'):
 #     from torchvision.ops import _new_empty_tensor
@@ -158,7 +158,7 @@ def all_gather(data):
         tensor_list.append(paddle.empty((max_size,), dtype=paddle.uint8, device="cuda"))
     if local_size != max_size:
         padding = paddle.empty(size=(max_size - local_size,), dtype=paddle.uint8, device="cuda")
-        tensor = paddle.cat((tensor, padding), dim=0)
+        tensor = paddle.concat((tensor, padding), axis=0)
     dist.all_gather(tensor_list, tensor)
 
     data_list = []
@@ -188,7 +188,7 @@ def reduce_dict(input_dict, average=True):
         for k in sorted(input_dict.keys()):
             names.append(k)
             values.append(input_dict[k])
-        values = paddle.stack(values, dim=0)
+        values = paddle.stack(values, axis=0)
         dist.all_reduce(values)
         if average:
             values /= world_size
@@ -510,26 +510,27 @@ def accuracy(output, target, topk=(1,)):
     return res
 
 
-def interpolate(input, size=None, scale_factor=None, mode="nearest", align_corners=None):
-    # type: (Tensor, Optional[List[int]], Optional[float], str, Optional[bool]) -> Tensor
-    """
-    Equivalent to nn.functional.interpolate, but with support for empty batch sizes.
-    This will eventually be supported natively by PyTorch, and this
-    class can go away.
-    """
-    if float(torchvision.__version__[:3]) < 0.7:
-        if input.numel() > 0:
-            return paddle.nn.functional.interpolate(
-                input, size, scale_factor, mode, align_corners
-            )
+# def interpolate(input, size=None, scale_factor=None, mode="nearest", align_corners=None):
+#     # type: (Tensor, Optional[List[int]], Optional[float], str, Optional[bool]) -> Tensor
+#     """
+#     Equivalent to nn.functional.interpolate, but with support for empty batch sizes.
+#     This will eventually be supported natively by PyTorch, and this
+#     class can go away.
+#     """
+#     return torchvision.ops.misc.interpolate(input, size, scale_factor, mode, align_corners)
+#     if float(torchvision.__version__[:3]) < 0.7:
+#         if input.numel() > 0:
+#             return paddle.nn.functional.interpolate(
+#                 input, size, scale_factor, mode, align_corners
+#             )
 
-        output_shape = _output_size(2, input, size, scale_factor)
-        output_shape = list(input.shape[:-2]) + list(output_shape)
-        if float(torchvision.__version__[:3]) < 0.5:
-            return _NewEmptyTensorOp.apply(input, output_shape)
-        return _new_empty_tensor(input, output_shape)
-    else:
-        return torchvision.ops.misc.interpolate(input, size, scale_factor, mode, align_corners)
+#         output_shape = _output_size(2, input, size, scale_factor)
+#         output_shape = list(input.shape[:-2]) + list(output_shape)
+#         if float(torchvision.__version__[:3]) < 0.5:
+#             return _NewEmptyTensorOp.apply(input, output_shape)
+#         return _new_empty_tensor(input, output_shape)
+#     else:
+#         return torchvision.ops.misc.interpolate(input, size, scale_factor, mode, align_corners)
 
 
 def get_total_grad_norm(parameters, norm_type=2):
@@ -541,8 +542,8 @@ def get_total_grad_norm(parameters, norm_type=2):
     return total_norm
 
 def inverse_sigmoid(x, eps=1e-5):
-    x = x.clamp(min=0, max=1)
-    x1 = x.clamp(min=eps)
-    x2 = (1 - x).clamp(min=eps)
+    x = x.clip(min=0, max=1)
+    x1 = x.clip(min=eps)
+    x2 = (1 - x).clip(min=eps)
     return paddle.log(x1/x2)
 

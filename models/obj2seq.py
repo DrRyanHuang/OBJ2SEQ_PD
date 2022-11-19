@@ -18,9 +18,7 @@ import paddle
 import paddle.nn.functional as F
 from paddle import nn
 
-from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
-                       accuracy, get_world_size, interpolate,
-                       is_dist_avail_and_initialized, inverse_sigmoid)
+from util.misc import NestedTensor, nested_tensor_from_tensor_list
 
 from .backbone import build_backbone
 from .transformer import build_transformer

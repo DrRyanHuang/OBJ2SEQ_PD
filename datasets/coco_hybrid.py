@@ -140,7 +140,7 @@ def convert_coco_poly_to_mask(segmentations, height, width):
         if len(mask.shape) < 3:
             mask = mask[..., None]
         mask = paddle.to_tensor(mask, dtype="uint8")
-        mask = mask.any(dim=2)
+        mask = mask.any(axis=2)
         masks.append(mask)
     if masks:
         masks = paddle.stack(masks, axis=0)
@@ -175,14 +175,14 @@ class ConvertCocoPolysToMask(object):
 
         anno = target["annotations"]
         multi_labels = [self.json_category_id_to_contiguous_id[item["category_id"]] for item in anno]
-        super_labels = paddle.as_tensor([self.category_id_to_super_id[k] for k in multi_labels], dtype=paddle.long).unique()
-        multi_labels = paddle.as_tensor(multi_labels, dtype=paddle.long).unique()
+        super_labels = paddle.to_tensor([self.category_id_to_super_id[k] for k in multi_labels], dtype=paddle.long).unique()
+        multi_labels = paddle.to_tensor(multi_labels, dtype=paddle.long).unique()
 
         anno = [obj for obj in anno if 'iscrowd' not in obj or obj['iscrowd'] == 0]
 
         boxes = [obj["bbox"] for obj in anno]
         # guard against no boxes via resizing
-        boxes = paddle.as_tensor(boxes, dtype=paddle.float32).reshape(-1, 4)
+        boxes = paddle.to_tensor(boxes, dtype=paddle.float32).reshape(-1, 4)
         boxes[:, 2:] += boxes[:, :2]
         boxes[:, 0::2].clamp_(min=0, max=w)
         boxes[:, 1::2].clamp_(min=0, max=h)
@@ -198,7 +198,7 @@ class ConvertCocoPolysToMask(object):
         keypoints = paddle.zeros(classes.shape[0], 17 * 3)
         anno_kps = self.coco_kps.loadAnns([obj["id"] for obj in anno if obj["category_id"] == 1])
         if anno_kps:
-            keypoints_these = paddle.as_tensor([obj["keypoints"] for obj in anno_kps], dtype=paddle.float32)
+            keypoints_these = paddle.to_tensor([obj["keypoints"] for obj in anno_kps], dtype=paddle.float32)
             keypoints[classes == 0] = keypoints_these
         keypoints = keypoints.view(classes.shape[0], 17, 3)
 
@@ -227,8 +227,8 @@ class ConvertCocoPolysToMask(object):
         target["area"] = area[keep]
         target["iscrowd"] = iscrowd[keep]
 
-        target["orig_size"] = paddle.as_tensor([int(h), int(w)])
-        target["size"] = paddle.as_tensor([int(h), int(w)])
+        target["orig_size"] = paddle.to_tensor([int(h), int(w)])
+        target["size"] = paddle.to_tensor([int(h), int(w)])
 
         return image, target
 

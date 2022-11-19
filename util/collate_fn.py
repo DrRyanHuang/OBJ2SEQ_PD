@@ -49,10 +49,10 @@ def collate_fn_imnet(batch, is_train=True):
     batch = list(zip(*batch))
     batch[0] = nested_tensor_from_tensor_list(batch[0])
     if is_train:
-        # batch[1] = {"multi_label": [paddle.as_tensor([item]) for item in batch[1]]}
+        # batch[1] = {"multi_label": [paddle.to_tensor([item]) for item in batch[1]]}
         batch[1] = {"multi_label": [paddle.to_tensor([item]) for item in batch[1]]}
     else:
-        # batch[1] = [{"multi_label": paddle.as_tensor([item])} for item in batch[1]]
+        # batch[1] = [{"multi_label": paddle.to_tensor([item])} for item in batch[1]]
         batch[1] = [{"multi_label": paddle.to_tensor([item])} for item in batch[1]]
     return tuple(batch)
 

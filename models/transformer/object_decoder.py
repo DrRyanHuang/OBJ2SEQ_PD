@@ -18,7 +18,7 @@ import paddle
 from paddle import nn
 import paddle.nn.functional as F
 
-from util.misc import inverse_sigmoid
+# from .util.misc import inverse_sigmoid
 
 from .attention_modules import DeformableDecoderLayer, _get_clones
 from ..predictors import build_detect_predictor
@@ -77,7 +77,7 @@ class ObjectDecoder(nn.Layer):
 
         bs = srcs.shape[0]
         bs_idx = additional_info.pop("bs_idx", paddle.arange(bs))
-        cls_idx = additional_info.pop("cls_idx", paddle.zeros(bs, dtype=paddle.long))
+        cls_idx = additional_info.pop("cls_idx", paddle.zeros((bs,), dtype=paddle.int64))
 
         # modify srcs
         cs_batch = [(bs_idx==i).sum().item() for i in range(bs)]
@@ -88,8 +88,8 @@ class ObjectDecoder(nn.Layer):
         reference_points, query_pos_embed = self.get_reference_points(cs_all)
 
         # modify kwargs
-        kwargs["src_valid_ratios"] = paddle.cat([
-            vs.expand(cs ,-1, -1) for cs, vs in zip(cs_batch, kwargs["src_valid_ratios"])
+        kwargs["src_valid_ratios"] = paddle.concat([
+            vs.expand([cs ,-1, -1]) for cs, vs in zip(cs_batch, kwargs["src_valid_ratios"])
         ])
         kwargs["cs_batch"] = cs_batch
 
@@ -123,7 +123,7 @@ class ObjectDecoder(nn.Layer):
     def get_reference_points(self, bs):
         # Generate srcs
         if self.spatial_prior == "learned":
-            reference_points = self.position.weight.unsqueeze(0).repeat(bs, 1, 1)
+            reference_points = self.position.weight.unsqueeze(0).tile([bs, 1, 1])
             query_embed = None
         elif self.spatial_prior == "grid":
             nx=ny=round(math.sqrt(self.num_position))
@@ -131,12 +131,13 @@ class ObjectDecoder(nn.Layer):
             x = (paddle.arange(nx) + 0.5) / nx
             y = (paddle.arange(ny) + 0.5) / ny
             xy=paddle.meshgrid(x,y)
-            reference_points=paddle.cat([xy[0].reshape(-1)[...,None],xy[1].reshape(-1)[...,None]],-1).cuda()
-            reference_points = reference_points.unsqueeze(0).repeat(bs, 1, 1)
+            reference_points=paddle.concat([xy[0].reshape([-1])[...,None],xy[1].reshape([-1])[...,None]],-1).cuda()
+            reference_points = reference_points.unsqueeze(0).tile([bs, 1, 1])
             query_embed = None
         elif self.spatial_prior == "sigmoid":
-            query_embed = self.position.weight.unsqueeze(0).expand(bs, -1, -1)
-            reference_points = self.reference_points(query_embed).sigmoid()
+            query_embed = self.position.weight.unsqueeze(0).expand([bs, -1, -1])
+            # reference_points = self.reference_points(query_embed).sigmoid()
+            reference_points = F.sigmoid(self.reference_points(query_embed))
             if not self.with_query_pos_embed:
                 query_embed = None
         else:
@@ -147,13 +148,13 @@ class ObjectDecoder(nn.Layer):
         c = self.d_model
         if class_vector is None:
             cs_all = cls_idx.shape[0]
-            tgt_object = self.position_patterns.weight.reshape(1 , self.num_position, c).repeat(cs_all, 1, 1)
+            tgt_object = self.position_patterns.weight.reshape([1 , self.num_position, c]).tile([cs_all, 1, 1])
         elif class_vector.dim() == 3:
             bs, cs, c = class_vector.shape
-            tgt_pos = self.position_patterns.weight.reshape(1 , self.num_position, c).repeat(bs*cs, 1, 1)
-            tgt_object = tgt_pos + class_vector.view(bs*cs, 1, c) # bs*cs, nobj, c
+            tgt_pos = self.position_patterns.weight.reshape([1 , self.num_position, c]).tile([bs*cs, 1, 1])
+            tgt_object = tgt_pos + class_vector.reshape([bs*cs, 1, c]) # bs*cs, nobj, c
         elif class_vector.dim() == 2:
             cs_all, c = class_vector.shape
-            tgt_pos = self.position_patterns.weight.reshape(1 , self.num_position, c).repeat(cs_all, 1, 1)
-            tgt_object = tgt_pos + class_vector.view(cs_all, 1, c) # cs_all, nobj, c
+            tgt_pos = self.position_patterns.weight.reshape([1 , self.num_position, c]).tile([cs_all, 1, 1])
+            tgt_object = tgt_pos + class_vector.reshape([cs_all, 1, c]) # cs_all, nobj, c
         return tgt_object

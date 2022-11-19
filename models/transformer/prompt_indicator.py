@@ -4,6 +4,7 @@
 # ------------------------------------------------------------------------
 import paddle
 from paddle import nn
+import paddle.nn.functional as F
 import numpy as np
 
 from .attention_modules import MultiHeadDecoderLayer as TransformerDecoderLayer, _get_clones
@@ -29,27 +30,32 @@ class RetentionPolicy(nn.Layer):
     def forward(self, label_logits, force_sample_probs=None, num_classes=None):
         """ label_logits: bs * K  """
         """ Return:       bs * K' """
-        label_prob = label_logits.sigmoid() # bs, K
+        # label_prob = label_logits.sigmoid() # bs, K
+        label_prob = F.sigmoid(label_logits)
         if self.training:
             if force_sample_probs is not None:
                 label_prob = paddle.where(force_sample_probs >= 0., force_sample_probs, label_prob)
-            min_classes = num_classes.clamp(max=self.train_min_classes) if num_classes is not None else self.train_min_classes
-            max_classes = num_classes.clamp(max=self.train_max_classes) if num_classes is not None else self.train_max_classes
+            min_classes = num_classes.clip(max=self.train_min_classes) if num_classes is not None else self.train_min_classes
+            max_classes = num_classes.clip(max=self.train_max_classes) if num_classes is not None else self.train_max_classes
             class_thr = self.train_class_thr
         else:
-            min_classes = num_classes.clamp(max=self.eval_min_classes) if num_classes is not None else self.eval_min_classes
-            max_classes = num_classes.clamp(max=self.eval_max_classes) if num_classes is not None else self.eval_max_classes
+            min_classes = num_classes.clip(max=self.eval_min_classes) if num_classes is not None else self.eval_min_classes
+            max_classes = num_classes.clip(max=self.eval_max_classes) if num_classes is not None else self.eval_max_classes
             class_thr = self.eval_class_thr
-        num_above_thr = (label_prob >= class_thr).sum(dim=1) # bs
+        num_above_thr = (label_prob >= class_thr).sum(axis=1) # bs
         if isinstance(min_classes, paddle.Tensor):
-            num_train = num_above_thr.where(num_above_thr > min_classes, min_classes).where(num_above_thr < max_classes, max_classes)
+            # num_train = num_above_thr.where(num_above_thr > min_classes, min_classes).where(num_above_thr < max_classes, max_classes)
+            num_train = paddle.where(num_above_thr > min_classes, num_above_thr, min_classes)
+            num_train = paddle.where(num_above_thr < max_classes, num_above_thr, max_classes)
+            
+            
         else:
-            num_train = num_above_thr.clamp(min=min_classes, max=max_classes) # bs
-        sorted_idxs = label_prob.argsort(dim=1, descending=True) # bs, nc
+            num_train = num_above_thr.clip(min=min_classes, max=max_classes) # bs
+        sorted_idxs = label_prob.argsort(axis=1, descending=True) # bs, nc
         bs_idx, cls_idx = [], []
         for id_b, (sorted_idx) in enumerate(sorted_idxs):
             n_train = num_train[id_b]
-            cls_idx.append(sorted_idx[:n_train].sort().values)
+            cls_idx.append(sorted_idx[:n_train].sort())
             bs_idx.append(paddle.full_like(cls_idx[-1], id_b))
         return paddle.concat(bs_idx), paddle.concat(cls_idx)
 
@@ -131,16 +137,16 @@ class PromptIndicator(nn.Layer):
                     new_srcs.append(srcs[:, src_level_start_index[lvl]:, :])
                     new_mask.append(mask[:, src_level_start_index[lvl]:])
             src_level_start_index = paddle.to_tensor([0] + [m.shape[1] for m in new_mask[:-1]], device=src_level_start_index.device, dtype=src_level_start_index.dtype)
-            src_level_start_index = src_level_start_index.cumsum(dim=0)
+            src_level_start_index = src_level_start_index.cumsum(axis=0)
             kwargs['src_level_start_index'] = src_level_start_index
-            srcs, mask = paddle.concat(new_srcs, dim=1), paddle.concat(new_mask, dim=1)
+            srcs, mask = paddle.concat(new_srcs, axis=1), paddle.concat(new_mask, axis=1)
 
         # get class prompts
         if self.convert_vector is not None:
             class_prompts = self.vector_ln(self.convert_vector(self.class_prompts))
         else:
             class_prompts = self.class_prompts
-        tgt_class = class_prompts.unsqueeze(0).repeat(bs, 1, 1)
+        tgt_class = class_prompts.unsqueeze(0).tile([bs, 1, 1])
         origin_class_vector = tgt_class
         # tgt_class: bs, K, d
 
@@ -149,7 +155,7 @@ class PromptIndicator(nn.Layer):
         for lid, layer in enumerate(self.prompt_blocks):
             tgt_class = layer(tgt_class, None, None, srcs=srcs, src_padding_masks=mask, **kwargs) # bs, 91, c
             label_logits = self.classifier_label[lid](tgt_class, class_vector=origin_class_vector)
-            label_logits = label_logits.view(bs, -1)
+            label_logits = label_logits.reshape([bs, -1])
             output_label_logits.append(label_logits)
             output_feats.append(tgt_class)
 

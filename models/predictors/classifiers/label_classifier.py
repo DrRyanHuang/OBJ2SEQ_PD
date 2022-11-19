@@ -45,7 +45,7 @@ class AbstractClassifier(nn.Layer):
             if self.skip_and_init:
                 x = skip + x
         new_feat = x
-        assert x.dim() == 3
+        assert x.ndim == 3
         W = self.getClassifierWeight(class_vector, cls_idx) # W: csall*d
 
         sim = (x * W).sum(-1) # bs*cs*nobj

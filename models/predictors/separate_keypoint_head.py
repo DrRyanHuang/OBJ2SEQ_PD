@@ -54,7 +54,7 @@ class SeparateKeypointHead(nn.Layer):
         feat = feat.view(bs, nobj, c)
         tmp = self.bbox_embed(feat) # bs, cs, obj, 4
         reference_points = reference_points.squeeze(1) # bs, nobj, 2
-        tmp_center, tmp_offsets = self.output_layer(feat).split([2, 34], dim=-1) # bs, obj, 4+2+34
+        tmp_center, tmp_offsets = self.output_layer(feat).split([2, 34], axis=-1) # bs, obj, 4+2+34
         tmp_center = tmp_center.reshape(bs, nobj, 1, 2)
         tmp_offsets = tmp_offsets.reshape(bs, nobj, 17, 2)
         # This part is for outputs_coord
@@ -63,7 +63,7 @@ class SeparateKeypointHead(nn.Layer):
             tmp = tmp + reference
         else:
             assert reference.shape[-1] == 2
-            tmp = tmp + paddle.concat([reference, paddle.zeros_like(reference)], dim=-1)
+            tmp = tmp + paddle.concat([reference, paddle.zeros_like(reference)], axis=-1)
         outputs_coord = tmp.sigmoid()
         keypoint_coords = self.generate_keypoint_outputs(tmp_center, tmp_offsets, outputs_coord, reference_points) # bs, obj, 17, 2
         outputs = {

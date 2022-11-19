@@ -31,7 +31,7 @@ def drop_path(x, drop_prob: float = 0., training: bool = False, scale_by_keep: b
     if drop_prob == 0. or not training:
         return x
     keep_prob = 1 - drop_prob
-    shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
+    shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff axis tensors, not just 2D ConvNets
     random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
     if keep_prob > 0.0 and scale_by_keep:
         random_tensor.div_(keep_prob)
@@ -119,7 +119,7 @@ class WindowAttention(nn.Layer):
     """ Window based multi-head self attention (W-MSA) module with relative position bias.
     It supports both of shifted and non-shifted window.
     Args:
-        dim (int): Number of input channels.
+        axis (int): Number of input channels.
         window_size (tuple[int]): The height and width of the window.
         num_heads (int): Number of attention heads.
         qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
@@ -128,13 +128,13 @@ class WindowAttention(nn.Layer):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, axis, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
 
         super().__init__()
-        self.dim = dim
+        self.axis = axis
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
-        head_dim = dim // num_heads
+        head_dim = axis // num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
         # define a parameter table of relative position bias
@@ -159,9 +159,9 @@ class WindowAttention(nn.Layer):
         relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
         self.register_buffer("relative_position_index", relative_position_index)
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.qkv = nn.Linear(axis, axis * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
+        self.proj = nn.Linear(axis, axis)
         self.proj_drop = nn.Dropout(proj_drop)
 
         # trunc_normal_(self.relative_position_bias_table, std=.02)
@@ -204,11 +204,11 @@ class WindowAttention(nn.Layer):
 class SwinTransformerBlock(nn.Layer):
     """ Swin Transformer Block.
     Args:
-        dim (int): Number of input channels.
+        axis (int): Number of input channels.
         num_heads (int): Number of attention heads.
         window_size (int): Window size.
         shift_size (int): Shift size for SW-MSA.
-        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
+        mlp_ratio (float): Ratio of mlp hidden axis to embedding axis.
         qkv_bias (bool, optional): If True, add a learnable bias to query, key, value. Default: True
         qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set.
         drop (float, optional): Dropout rate. Default: 0.0
@@ -218,26 +218,26 @@ class SwinTransformerBlock(nn.Layer):
         norm_layer (nn.Layer, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, dim, num_heads, window_size=7, shift_size=0,
+    def __init__(self, axis, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
-        self.dim = dim
+        self.axis = axis
         self.num_heads = num_heads
         self.window_size = window_size
         self.shift_size = shift_size
         self.mlp_ratio = mlp_ratio
         assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
 
-        self.norm1 = norm_layer(dim)
+        self.norm1 = norm_layer(axis)
         self.attn = WindowAttention(
-            dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+            axis, window_size=to_2tuple(self.window_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-        self.norm2 = norm_layer(dim)
-        mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        self.norm2 = norm_layer(axis)
+        mlp_hidden_dim = int(axis * mlp_ratio)
+        self.mlp = Mlp(in_features=axis, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
         self.H = None
         self.W = None
@@ -304,14 +304,14 @@ class SwinTransformerBlock(nn.Layer):
 class PatchMerging(nn.Layer):
     """ Patch Merging Layer
     Args:
-        dim (int): Number of input channels.
+        axis (int): Number of input channels.
         norm_layer (nn.Layer, optional): Normalization layer.  Default: nn.LayerNorm
     """
-    def __init__(self, dim, norm_layer=nn.LayerNorm):
+    def __init__(self, axis, norm_layer=nn.LayerNorm):
         super().__init__()
-        self.dim = dim
-        self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
-        self.norm = norm_layer(4 * dim)
+        self.axis = axis
+        self.reduction = nn.Linear(4 * axis, 2 * axis, bias=False)
+        self.norm = norm_layer(4 * axis)
 
     def forward(self, x, H, W):
         """ Forward function.
@@ -345,11 +345,11 @@ class PatchMerging(nn.Layer):
 class BasicLayer(nn.Layer):
     """ A basic Swin Transformer layer for one stage.
     Args:
-        dim (int): Number of feature channels
+        axis (int): Number of feature channels
         depth (int): Depths of this stage.
         num_heads (int): Number of attention head.
         window_size (int): Local window size. Default: 7.
-        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim. Default: 4.
+        mlp_ratio (float): Ratio of mlp hidden axis to embedding axis. Default: 4.
         qkv_bias (bool, optional): If True, add a learnable bias to query, key, value. Default: True
         qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set.
         drop (float, optional): Dropout rate. Default: 0.0
@@ -361,7 +361,7 @@ class BasicLayer(nn.Layer):
     """
 
     def __init__(self,
-                 dim,
+                 axis,
                  depth,
                  num_heads,
                  window_size=7,
@@ -383,7 +383,7 @@ class BasicLayer(nn.Layer):
         # build blocks
         self.blocks = nn.LayerList([
             SwinTransformerBlock(
-                dim=dim,
+                axis=axis,
                 num_heads=num_heads,
                 window_size=window_size,
                 shift_size=0 if (i % 2 == 0) else window_size // 2,
@@ -398,7 +398,7 @@ class BasicLayer(nn.Layer):
 
         # patch merging layer
         if downsample is not None:
-            self.downsample = downsample(dim=dim, norm_layer=norm_layer)
+            self.downsample = downsample(axis=axis, norm_layer=norm_layer)
         else:
             self.downsample = None
 
@@ -499,7 +499,7 @@ class SwinTransformer(nn.Layer):
         depths (tuple[int]): Depths of each Swin Transformer stage.
         num_heads (tuple[int]): Number of attention head of each stage.
         window_size (int): Window size. Default: 7.
-        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim. Default: 4.
+        mlp_ratio (float): Ratio of mlp hidden axis to embedding axis. Default: 4.
         qkv_bias (bool): If True, add a learnable bias to query, key, value. Default: True
         qk_scale (float): Override default qk scale of head_dim ** -0.5 if set.
         drop_rate (float): Dropout rate.
@@ -568,7 +568,7 @@ class SwinTransformer(nn.Layer):
         self.layers = nn.LayerList()
         for i_layer in range(self.num_layers):
             layer = BasicLayer(
-                dim=int(embed_dim * 2 ** i_layer),
+                axis=int(embed_dim * 2 ** i_layer),
                 depth=depths[i_layer],
                 num_heads=num_heads[i_layer],
                 window_size=window_size,

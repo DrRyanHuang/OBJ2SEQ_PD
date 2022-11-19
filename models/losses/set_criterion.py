@@ -5,9 +5,9 @@ from paddle import nn
 from .matcher import build_matcher
 from .losses import sigmoid_focal_loss
 from util import box_ops
-from util.misc import (nested_tensor_from_tensor_list, interpolate,
+from util.misc import (nested_tensor_from_tensor_list,
                        get_world_size, is_dist_avail_and_initialized)
-
+from paddle.nn.functional import interpolate
 
 import numpy as np
 
@@ -39,7 +39,7 @@ class SetCriterion(nn.Layer):
 
     def loss_labels(self, outputs, targets, indices, num_boxes, log=False):
         """Classification loss (NLL)
-        targets dicts must contain the key "labels" containing a tensor of dim [nb_target_boxes]
+        targets dicts must contain the key "labels" containing a tensor of axis [nb_target_boxes]
         """
         assert 'pred_logits' in outputs
         src_logits = outputs['pred_logits']
@@ -79,13 +79,13 @@ class SetCriterion(nn.Layer):
 
     def loss_boxes(self, outputs, targets, indices, num_boxes):
         """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
-           targets dicts must contain the key "boxes" containing a tensor of dim [nb_target_boxes, 4]
+           targets dicts must contain the key "boxes" containing a tensor of axis [nb_target_boxes, 4]
            The target boxes are expected in format (center_x, center_y, h, w), normalized by the image size.
         """
         assert 'pred_boxes' in outputs
         idx = self._get_src_permutation_idx(indices)
         src_boxes = outputs['pred_boxes'][idx]
-        target_boxes = paddle.concat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+        target_boxes = paddle.concat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], axis=0)
 
         loss_bbox = F.l1_loss(src_boxes, target_boxes, reduction='none')
 
@@ -100,7 +100,7 @@ class SetCriterion(nn.Layer):
 
     def loss_masks(self, outputs, targets, indices, num_boxes):
         """Compute the losses related to the masks: the focal loss and the dice loss.
-           targets dicts must contain the key "masks" containing a tensor of dim [nb_target_boxes, h, w]
+           targets dicts must contain the key "masks" containing a tensor of axis [nb_target_boxes, h, w]
         """
         assert "pred_masks" in outputs
 
@@ -129,14 +129,14 @@ class SetCriterion(nn.Layer):
 
     def _get_src_permutation_idx(self, indices):
         # permute predictions following indices
-        batch_idx = paddle.cat([paddle.full_like(src, i) for i, (src, _) in enumerate(indices)])
-        src_idx = paddle.cat([src for (src, _) in indices])
+        batch_idx = paddle.concat([paddle.full_like(src, i) for i, (src, _) in enumerate(indices)])
+        src_idx = paddle.concat([src for (src, _) in indices])
         return batch_idx, src_idx
 
     def _get_tgt_permutation_idx(self, indices):
         # permute targets following indices
-        batch_idx = paddle.cat([paddle.full_like(tgt, i) for i, (_, tgt) in enumerate(indices)])
-        tgt_idx = paddle.cat([tgt for (_, tgt) in indices])
+        batch_idx = paddle.concat([paddle.full_like(tgt, i) for i, (_, tgt) in enumerate(indices)])
+        tgt_idx = paddle.concat([tgt for (_, tgt) in indices])
         return batch_idx, tgt_idx
 
     def get_loss(self, loss, outputs, targets, indices, num_boxes, **kwargs):
@@ -163,7 +163,7 @@ class SetCriterion(nn.Layer):
 
         # Compute the average number of target boxes accross all nodes, for normalization purposes
         num_boxes = sum(len(t["labels"]) for t in targets)
-        num_boxes = paddle.as_tensor([num_boxes], dtype=paddle.float, device=next(iter(outputs.values())).device)
+        num_boxes = paddle.to_tensor([num_boxes], dtype=paddle.float, device=next(iter(outputs.values())).device)
         if is_dist_avail_and_initialized():
             paddle.distributed.all_reduce(num_boxes)
         num_boxes = paddle.clamp(num_boxes / get_world_size(), min=1).item()

@@ -39,7 +39,7 @@ class PostProcess(nn.Layer):
         assert target_sizes.shape[1] == 2
 
         prob = out_logits.sigmoid()
-        topk_values, topk_indexes = paddle.topk(prob.view(out_logits.shape[0], -1), 100, dim=1)
+        topk_values, topk_indexes = paddle.topk(prob.view(out_logits.shape[0], -1), 100, axis=1)
         scores = topk_values
         topk_boxes = topk_indexes // out_logits.shape[2]
         labels = topk_indexes % out_logits.shape[2]
@@ -48,7 +48,7 @@ class PostProcess(nn.Layer):
 
         # and from relative [0, 1] to absolute [0, height] coordinates
         img_h, img_w = target_sizes.unbind(1)
-        scale_fct = paddle.stack([img_w, img_h, img_w, img_h], dim=1)
+        scale_fct = paddle.stack([img_w, img_h, img_w, img_h], axis=1)
         boxes = boxes * scale_fct[:, None, :]
 
         results = [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(scores, labels, boxes)]
@@ -60,7 +60,7 @@ class MutiClassPostProcess(nn.Layer):
     @paddle.no_grad()
     def forward(self, outputs, target_sizes):
         img_h, img_w = target_sizes.unbind(1)
-        scale_fct = paddle.stack([img_w, img_h, img_w, img_h], dim=1) # bs, 4
+        scale_fct = paddle.stack([img_w, img_h, img_w, img_h], axis=1) # bs, 4
 
         if "detection" in outputs:
             output = outputs["detection"]
@@ -87,7 +87,7 @@ class MutiClassPostProcess(nn.Layer):
             all_scores = output["pred_logits"].sigmoid()
             nobj = all_scores.shape[-1]
             all_keypoints = output["pred_keypoints"] * box_scale[:, None, None, :2]
-            all_keypoints = paddle.cat([all_keypoints, paddle.ones_like(all_keypoints)[..., :1]], dim=-1)
+            all_keypoints = paddle.concat([all_keypoints, paddle.ones_like(all_keypoints)[..., :1]], axis=-1)
             all_boxes = box_ops.box_cxcywh_to_xyxy(output["pred_boxes"]) * box_scale[:, None, :]
             results_det = []
             for id_b in bs_idx.unique():
@@ -128,15 +128,15 @@ class KeypointPostProcess(nn.Layer):
 
         # and from relative [0, 1] to absolute [0, height] coordinates
         img_h, img_w = target_sizes.unbind(1) # bs
-        scale_fct = paddle.stack([img_w, img_h], dim=1) # bs, 2
+        scale_fct = paddle.stack([img_w, img_h], axis=1) # bs, 2
         out_keypoints = out_keypoints * scale_fct[:, None, None, :] # bs, nobj, 17, 2
         ones = paddle.ones_like(out_keypoints)[..., :1]
-        keypoints = paddle.cat([out_keypoints, ones], dim=-1)
+        keypoints = paddle.concat([out_keypoints, ones], axis=-1)
 
         if "pred_boxes" in outputs:
             out_bbox =  outputs['pred_boxes'].squeeze(1)
             boxes = box_ops.box_cxcywh_to_xyxy(out_bbox) # b, obj, 4
-            scale_fct = paddle.cat([scale_fct, scale_fct], dim=1) # bs, 4
+            scale_fct = paddle.concat([scale_fct, scale_fct], axis=1) # bs, 4
             boxes = boxes * scale_fct[:, None, :]
         else:
             boxes = None

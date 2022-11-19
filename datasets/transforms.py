@@ -25,7 +25,8 @@ import paddle.vision.transforms as T
 from paddle.vision.transforms import functional as F
 
 from util.box_ops import box_xyxy_to_cxcywh
-from util.misc import interpolate
+# from util.misc import interpolate
+from paddle.nn.functional import interpolate
 
 
 def crop(image, target, region):
@@ -45,7 +46,7 @@ def crop(image, target, region):
         cropped_boxes = boxes - paddle.to_tensor([j, i, j, i])
         cropped_boxes = paddle.min(cropped_boxes.reshape(-1, 2, 2), max_size)
         cropped_boxes = cropped_boxes.clamp(min=0)
-        area = (cropped_boxes[:, 1, :] - cropped_boxes[:, 0, :]).prod(dim=1)
+        area = (cropped_boxes[:, 1, :] - cropped_boxes[:, 0, :]).prod(axis=1)
         target["boxes"] = cropped_boxes.reshape(-1, 4)
         target["area"] = area
         fields.append("boxes")
@@ -67,7 +68,7 @@ def crop(image, target, region):
         # this is compatible with previous implementation
         if "boxes" in target:
             cropped_boxes = target['boxes'].reshape(-1, 2, 2)
-            keep = paddle.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], dim=1)
+            keep = paddle.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], axis=1)
         else:
             keep = target['masks'].flatten(1).any(1)
 
@@ -156,7 +157,7 @@ def resize(image, target, size, max_size=None):
 
     if "masks" in target:
         target['masks'] = interpolate(
-            target['masks'][:, None].float(), size, mode="nearest")[:, 0] > 0.5
+            target['masks'][:, None].cast("float32"), size, mode="nearest")[:, 0] > 0.5
 
     if "keypoints" in target:
         keypoints = target["keypoints"]
@@ -316,7 +317,7 @@ class LargeScaleJitter(object):
             cropped_boxes = boxes - paddle.to_tensor([j, i, j, i])
             cropped_boxes = paddle.min(cropped_boxes.reshape(-1, 2, 2), max_size)
             cropped_boxes = cropped_boxes.clamp(min=0)
-            area = (cropped_boxes[:, 1, :] - cropped_boxes[:, 0, :]).prod(dim=1)
+            area = (cropped_boxes[:, 1, :] - cropped_boxes[:, 0, :]).prod(axis=1)
             target["boxes"] = cropped_boxes.reshape(-1, 4)
             target["area"] = area
             fields.append("boxes")
@@ -338,7 +339,7 @@ class LargeScaleJitter(object):
             # this is compatible with previous implementation
             if "boxes" in target:
                 cropped_boxes = target['boxes'].reshape(-1, 2, 2)
-                keep = paddle.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], dim=1)
+                keep = paddle.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], axis=1)
             else:
                 keep = target['masks'].flatten(1).any(1)
 

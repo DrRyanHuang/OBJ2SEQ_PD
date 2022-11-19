@@ -18,7 +18,7 @@ from paddle import nn
 from .matcher_kps import build_matcher
 from .losses import sigmoid_focal_loss
 from util import box_ops
-from util.misc import (nested_tensor_from_tensor_list, interpolate,
+from util.misc import (nested_tensor_from_tensor_list,
                        get_world_size, is_dist_avail_and_initialized)
 
 
@@ -85,7 +85,7 @@ class KeypointSetCriterion(nn.Layer):
 
     def loss_labels(self, outputs, targets, indices, num_boxes, num_pts):
         """Classification loss (NLL)
-        targets dicts must contain the key "labels" containing a tensor of dim [nb_target_boxes]
+        targets dicts must contain the key "labels" containing a tensor of axis [nb_target_boxes]
         """
         assert 'pred_logits' in outputs
         src_logits = outputs['pred_logits']
@@ -107,7 +107,7 @@ class KeypointSetCriterion(nn.Layer):
 
     def loss_bce(self, outputs, targets, indices, num_boxes, num_pts):
         """Classification loss (NLL)
-        targets dicts must contain the key "labels" containing a tensor of dim [nb_target_boxes]
+        targets dicts must contain the key "labels" containing a tensor of axis [nb_target_boxes]
         """
         # assert self.type == 'det'
         srcs_idx = self._get_src_permutation_idx(indices)
@@ -130,13 +130,13 @@ class KeypointSetCriterion(nn.Layer):
 
     def loss_boxes(self, outputs, targets, indices, num_boxes, num_pts):
         """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
-           targets dicts must contain the key "boxes" containing a tensor of dim [nb_target_boxes, 4]
+           targets dicts must contain the key "boxes" containing a tensor of axis [nb_target_boxes, 4]
            The target boxes are expected in format (center_x, center_y, h, w), normalized by the image size.
         """
         assert 'pred_boxes' in outputs
         idx = self._get_src_permutation_idx(indices)
         src_boxes = outputs['pred_boxes'][idx]
-        target_boxes = paddle.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+        target_boxes = paddle.concat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], axis=0)
 
         loss_bbox = F.l1_loss(src_boxes, target_boxes, reduction='none')
 
@@ -153,12 +153,12 @@ class KeypointSetCriterion(nn.Layer):
 
         idx = self._get_src_permutation_idx(indices)
         src_joints = outputs['pred_keypoints'][idx] # tgt, 17, 2
-        tgt_joints = paddle.cat([t['keypoints'][i] for t, (_, i) in zip(targets, indices)], dim=0) # tgt, 17, 3
-        tgt_bboxes = paddle.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0) # tgt, 4
+        tgt_joints = paddle.concat([t['keypoints'][i] for t, (_, i) in zip(targets, indices)], axis=0) # tgt, 17, 3
+        tgt_bboxes = paddle.concat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], axis=0) # tgt, 4
 
         tgt_flags = tgt_joints[..., 2]
         tgt_joints = tgt_joints[..., 0:2]
-        tgt_flags = (tgt_flags > 0) * (tgt_joints >= 0).all(dim=-1) * (tgt_joints <= 1).all(dim=-1) # zychen
+        tgt_flags = (tgt_flags > 0) * (tgt_joints >= 0).all(axis=-1) * (tgt_joints <= 1).all(axis=-1) # zychen
         tgt_wh = tgt_bboxes[..., 2:]
         tgt_areas = tgt_wh[..., 0] * tgt_wh[..., 1]
         sigmas = KPS_OKS_SIGMAS # self.sigmas
@@ -166,9 +166,9 @@ class KeypointSetCriterion(nn.Layer):
         # if with_center:
         #     tgt_center = tgt_bboxes[..., 0:2]
         #     sigma_center = sigmas.mean()
-        #     tgt_joints = paddle.cat([tgt_joints, tgt_center[:, None, :]], dim=1)
+        #     tgt_joints = paddle.concat([tgt_joints, tgt_center[:, None, :]], axis=1)
         #     sigmas = np.append(sigmas, np.array([sigma_center]), axis=0)
-        #     tgt_flags = paddle.cat([tgt_flags, paddle.ones([tgt_flags.size(0), 1]).type_as(tgt_flags)], dim=1)
+        #     tgt_flags = paddle.concat([tgt_flags, paddle.ones([tgt_flags.size(0), 1]).type_as(tgt_flags)], axis=1)
 
         sigmas = paddle.tensor(sigmas).type_as(tgt_joints)
         d_sq = paddle.square(src_joints - tgt_joints).sum(-1)
@@ -185,11 +185,11 @@ class KeypointSetCriterion(nn.Layer):
         assert 'pred_keypoints' in outputs
         idx = self._get_src_permutation_idx(indices)
         src_kps = outputs['pred_keypoints'][idx]
-        target_kps = paddle.cat([t['keypoints'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+        target_kps = paddle.concat([t['keypoints'][i] for t, (_, i) in zip(targets, indices)], axis=0)
         tgt_kps = target_kps[..., :2]
-        tgt_visible = (target_kps[..., 2] > 0) * (tgt_kps >= 0).all(dim=-1) * (tgt_kps <= 1).all(dim=-1)
+        tgt_visible = (target_kps[..., 2] > 0) * (tgt_kps >= 0).all(axis=-1) * (tgt_kps <= 1).all(axis=-1)
         if self.keypoint_reference == "relative":
-            target_boxes = paddle.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+            target_boxes = paddle.concat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], axis=0)
             bbox_wh = target_boxes[..., 2:].unsqueeze(1) # nobj, 1, 2
             src_kps, tgt_kps = src_kps / bbox_wh, tgt_kps / bbox_wh
         src_loss, tgt_loss = src_kps[tgt_visible], tgt_kps[tgt_visible]
@@ -200,14 +200,14 @@ class KeypointSetCriterion(nn.Layer):
 
     def _get_src_permutation_idx(self, indices):
         # permute predictions following indices
-        batch_idx = paddle.cat([paddle.full_like(src, i) for i, (src, _) in enumerate(indices)])
-        src_idx = paddle.cat([src for (src, _) in indices])
+        batch_idx = paddle.concat([paddle.full_like(src, i) for i, (src, _) in enumerate(indices)])
+        src_idx = paddle.concat([src for (src, _) in indices])
         return batch_idx, src_idx
 
     def _get_tgt_permutation_idx(self, indices):
         # permute targets following indices
-        batch_idx = paddle.cat([paddle.full_like(tgt, i) for i, (_, tgt) in enumerate(indices)])
-        tgt_idx = paddle.cat([tgt for (_, tgt) in indices])
+        batch_idx = paddle.concat([paddle.full_like(tgt, i) for i, (_, tgt) in enumerate(indices)])
+        tgt_idx = paddle.concat([tgt for (_, tgt) in indices])
         return batch_idx, tgt_idx
 
     def get_loss(self, loss, outputs, targets, indices, num_boxes, num_pts):
@@ -233,15 +233,15 @@ class KeypointSetCriterion(nn.Layer):
                   keypoints: ngts, 17, 3
         """
         num_boxes = sum(t["keypoints"].shape[0] for t in targets)
-        num_boxes = paddle.as_tensor([num_boxes], dtype=paddle.float, device=next(iter(outputs.values())).device)
+        num_boxes = paddle.to_tensor([num_boxes], dtype=paddle.float, device=next(iter(outputs.values())).device)
         if is_dist_avail_and_initialized():
             paddle.distributed.all_reduce(num_boxes)
         num_boxes = paddle.clamp(num_boxes / get_world_size(), min=1).item()
 
-        kps = paddle.cat([t["keypoints"] for t in targets], dim=0)
-        kps = (kps[..., 2] > 0) * (kps[..., :2] >= 0).all(dim=-1) * (kps[..., :2] <= 1).all(dim=-1)
+        kps = paddle.concat([t["keypoints"] for t in targets], axis=0)
+        kps = (kps[..., 2] > 0) * (kps[..., :2] >= 0).all(axis=-1) * (kps[..., :2] <= 1).all(axis=-1)
         num_pts = kps.sum()
-        num_pts = paddle.as_tensor(num_pts, dtype=paddle.float, device=next(iter(outputs.values())).device)
+        num_pts = paddle.to_tensor(num_pts, dtype=paddle.float, device=next(iter(outputs.values())).device)
         if is_dist_avail_and_initialized():
             paddle.distributed.all_reduce(num_pts)
         num_pts = paddle.clamp(num_pts / get_world_size(), min=1).item()

@@ -70,18 +70,18 @@ if __name__ == '__main__':
         text = clip.tokenize(sentences).to(device)
         with paddle.no_grad():
             if len(text) > 10000:
-                text_features = paddle.cat([
+                text_features = paddle.concat([
                     model.encode_text(text[:len(text) // 2]),
                     model.encode_text(text[len(text) // 2:])],
-                    dim=0)
+                    axis=0)
             else:
                 text_features = model.encode_text(text)
         print('text_features.shape', text_features.shape)
         if args.avg_synonyms:
             synonyms_per_cat = [len(x) for x in sentences_synonyms]
-            text_features = text_features.split(synonyms_per_cat, dim=0)
-            text_features = [x.mean(dim=0) for x in text_features]
-            text_features = paddle.stack(text_features, dim=0)
+            text_features = text_features.split(synonyms_per_cat, axis=0)
+            text_features = [x.mean(axis=0) for x in text_features]
+            text_features = paddle.stack(text_features, axis=0)
             print('after stack', text_features.shape)
         text_features = text_features.cpu().numpy()
     elif args.model in ['bert', 'roberta']:
@@ -103,9 +103,9 @@ if __name__ == '__main__':
         text_features = outputs.detach().cpu()
         if args.avg_synonyms:
             synonyms_per_cat = [len(x) for x in sentences_synonyms]
-            text_features = text_features.split(synonyms_per_cat, dim=0)
-            text_features = [x.mean(dim=0) for x in text_features]
-            text_features = paddle.stack(text_features, dim=0)
+            text_features = text_features.split(synonyms_per_cat, axis=0)
+            text_features = [x.mean(axis=0) for x in text_features]
+            text_features = paddle.stack(text_features, axis=0)
             print('after stack', text_features.shape)
         text_features = text_features.numpy()
         print('text_features.shape', text_features.shape)

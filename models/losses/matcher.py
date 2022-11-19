@@ -44,12 +44,12 @@ class HungarianMatcher(nn.Layer):
         """ Performs the matching
         Params:
             outputs: This is a dict that contains at least these entries:
-                 "pred_logits": Tensor of dim [batch_size, num_queries, num_classes] with the classification logits
-                 "pred_boxes": Tensor of dim [batch_size, num_queries, 4] with the predicted box coordinates
+                 "pred_logits": Tensor of axis [batch_size, num_queries, num_classes] with the classification logits
+                 "pred_boxes": Tensor of axis [batch_size, num_queries, 4] with the predicted box coordinates
             targets: This is a list of targets (len(targets) = batch_size), where each target is a dict containing:
-                 "labels": Tensor of dim [num_target_boxes] (where num_target_boxes is the number of ground-truth
+                 "labels": Tensor of axis [num_target_boxes] (where num_target_boxes is the number of ground-truth
                            objects in the target) containing the class labels
-                 "boxes": Tensor of dim [num_target_boxes, 4] containing the target box coordinates
+                 "boxes": Tensor of axis [num_target_boxes, 4] containing the target box coordinates
         Returns:
             A list of size batch_size, containing tuples of (index_i, index_j) where:
                 - index_i is the indices of the selected predictions (in order)
@@ -88,7 +88,7 @@ class HungarianMatcher(nn.Layer):
 
             sizes = [len(v["boxes"]) for v in targets]
             indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C.split(sizes, -1))]
-            return [(paddle.as_tensor(i, dtype=paddle.int64), paddle.as_tensor(j, dtype=paddle.int64)) for i, j in indices]
+            return [(paddle.to_tensor(i, dtype=paddle.int64), paddle.to_tensor(j, dtype=paddle.int64)) for i, j in indices]
 
 
 def build_matcher(args):

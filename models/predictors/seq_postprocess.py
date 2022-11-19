@@ -5,7 +5,7 @@
 
 import paddle
 import paddle.nn as nn
-
+import paddle.nn.functional as F
 from util.misc import inverse_sigmoid
 from util.task_category import TaskCategory
 
@@ -54,7 +54,7 @@ class DetPoseProcess(nn.Layer):
             steps = self.taskCategory.tasks[tId].num_steps
             taskInfo["feats"] = paddle.stack(
                 [sgn[taskInfo["indexes"][:sgn.shape[0]]] for sgn in signals[:steps]],
-                dim=-1
+                axis=-1
             )
             taskInfo["reference_points"] = reference_points[taskInfo["indexes"]]
         return taskInfos
@@ -64,7 +64,7 @@ class DetPoseProcess(nn.Layer):
             if key == "pred_logits":
                 continue
             elif key in outputs:
-                outputs[key] = paddle.cat([outputs[key], output_per_task[key]], dim=1)
+                outputs[key] = paddle.concat([outputs[key], output_per_task[key]], axis=1)
             else:
                 outputs[key] = output_per_task[key]
         return outputs
@@ -72,15 +72,17 @@ class DetPoseProcess(nn.Layer):
     def post_process_detection(self, signals, reference_points):
         reference = inverse_sigmoid(reference_points) # bs, cs, nobj, 2
         signals[..., :reference.shape[-1]] += reference
-        boxes = signals[..., :4].sigmoid()
+        # boxes = signals[..., :4].sigmoid()
+        boxes = F.sigmoid(signals[..., :4])
         return {"pred_boxes": boxes}
 
     def post_process_pose(self, signals, reference_points):
         cs_all, nobj, _ = reference_points.shape
         reference = inverse_sigmoid(reference_points) # bs, cs, nobj, 2
         signals[..., :2] += reference
-        boxes = signals[..., :4].sigmoid()
-        kpt_out = signals[..., 4:38].reshape(cs_all, nobj, 17, 2)
+        # boxes = signals[..., :4].sigmoid()
+        boxes = F.sigmoid(signals[..., :4])
+        kpt_out = signals[..., 4:38].reshape([cs_all, nobj, 17, 2])
         outputs_keypoint = boxes[..., None, :2] + kpt_out * boxes[..., None, 2:]
         return {
             "pred_boxes": boxes,

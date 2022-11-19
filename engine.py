@@ -132,7 +132,7 @@ def evaluate_coco(model, postprocessor, data_loader, base_ds, device, output_dir
         det_loss  = sum(loss_dict_reduced[k] for k in loss_dict_reduced.keys() if 'kps' not in k).item()
         metric_logger.update(loss=losses_reduced, det_loss=det_loss, **loss_dict_reduced)
 
-        orig_target_sizes = paddle.stack([t["orig_size"] for t in targets], dim=0)
+        orig_target_sizes = paddle.stack([t["orig_size"] for t in targets], axis=0)
         results = postprocessor(outputs, orig_target_sizes)
         res = {tgt["image_id"].item(): output for tgt, output in zip(targets, results)}
         if coco_evaluator is not None:

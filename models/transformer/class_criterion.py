@@ -30,8 +30,8 @@ class ClassDecoderCriterion(nn.Layer):
 
     def prepare_targets(self, outputs, targets):
         return {
-            "multi_label_onehot": paddle.stack([t["multi_label_onehot"] for t in targets], dim=0),
-            "multi_label_weights": paddle.stack([t["multi_label_weights"] for t in targets], dim=0),
+            "multi_label_onehot" : paddle.stack([t["multi_label_onehot"]  for t in targets], axis=0),
+            "multi_label_weights": paddle.stack([t["multi_label_weights"] for t in targets], axis=0),
         }
 
     def forward(self, outputs, aux_outputs, targets):

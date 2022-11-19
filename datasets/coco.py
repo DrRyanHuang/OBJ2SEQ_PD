@@ -127,11 +127,11 @@ def convert_coco_poly_to_mask(segmentations, height, width):
         mask = coco_mask.decode(rles)
         if len(mask.shape) < 3:
             mask = mask[..., None]
-        mask = paddle.as_tensor(mask, dtype=paddle.uint8)
-        mask = mask.any(dim=2)
+        mask = paddle.to_tensor(mask, dtype=paddle.uint8)
+        mask = mask.any(axis=2)
         masks.append(mask)
     if masks:
-        masks = paddle.stack(masks, dim=0)
+        masks = paddle.stack(masks, axis=0)
     else:
         masks = paddle.zeros((0, height, width), dtype=paddle.uint8)
     return masks
@@ -157,7 +157,7 @@ class ConvertCocoPolysToMask(object):
 
         anno = target["annotations"]
         # multi_labels = [self.json_category_id_to_contiguous_id[item["category_id"]] for item in anno]
-        # multi_labels = paddle.as_tensor(multi_labels, dtype=paddle.long).unique()
+        # multi_labels = paddle.to_tensor(multi_labels, dtype=paddle.long).unique()
 
         # anno = [obj for obj in anno if 'iscrowd' not in obj or obj['iscrowd'] == 0]
 

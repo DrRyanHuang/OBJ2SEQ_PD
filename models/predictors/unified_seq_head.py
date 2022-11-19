@@ -12,41 +12,61 @@ from util.misc import inverse_sigmoid
 # from timm.models.layers import trunc_normal_
 from .classifiers import build_label_classifier
 from .seq_postprocess import build_sequence_postprocess
-from ..transformer.attention_modules import DeformableDecoderLayer
+from ..transformer.attention_modules import DeformableDecoderLayer, custom_2_transpose
 # from models.ops.functions import MSDeformAttnFunction
 from models.losses.classwise_criterion import ClasswiseCriterion
 
+from functools import reduce
+from typing import Iterator
+
+def custom_unflatten(tensor: paddle.Tensor, axis, unflattened_size: Iterator):
+    
+    if axis < 0:
+        axis = tensor.ndim + axis
+    
+    if tensor.shape[axis] != reduce(lambda x,y:x*y, unflattened_size):
+        raise ValueError("Multiplication of `unflattened_size` must be equal to", tensor.shape[axis])
+
+    new_shape = list(tensor.shape[:axis]) + \
+                list(unflattened_size) + \
+                list(tensor.shape[axis+1:])
+                
+    return tensor.reshape(new_shape)
+    
+    
 
 class Attention(nn.Layer):
-    def __init__(self, dim, num_heads=8, dropout=0., proj=True):
+    def __init__(self, axis, num_heads=8, dropout=0., proj=True):
         super().__init__()
         self.num_heads = num_heads
-        head_dim = dim // num_heads
+        head_dim = axis // num_heads
         self.scale = head_dim ** -0.5
 
-        self.qkv = nn.Linear(dim, dim * 3)
+        self.qkv = nn.Linear(axis, axis * 3)
         self.attn_drop = nn.Dropout(dropout)
-        self.proj = nn.Linear(dim, dim) if proj else nn.Identity()
+        self.proj = nn.Linear(axis, axis) if proj else nn.Identity()
 
     def forward(self, x, pre_kv=None, attn_mask=None):
         N, B, C = x.shape
-        qkv = self.qkv(x).reshape(N, B, 3, self.num_heads, C // self.num_heads).permute(2, 1, 3, 0, 4)
+        qkv = self.qkv(x).reshape([N, B, 3, self.num_heads, C // self.num_heads]).transpose([2, 1, 3, 0, 4])
         q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
 
         if pre_kv is not None:
-            k = paddle.cat([pre_kv[0], k], dim=2)
-            v = paddle.cat([pre_kv[1], v], dim=2)
-        pre_kv = paddle.stack([k, v], dim=0)
+            k = paddle.concat([pre_kv[0], k], axis=2)
+            v = paddle.concat([pre_kv[1], v], axis=2)
+        pre_kv = paddle.stack([k, v], axis=0)
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale
+        # attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = (q @ custom_2_transpose(k, -2, -1) ) * self.scale
 
         if attn_mask is not None:
             attn.masked_fill_(attn_mask, float('-inf'))
 
-        attn = attn.softmax(dim=-1)
+        # attn = attn.softmax(axis=-1)
+        attn = F.softmax(attn, axis=-1)
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).permute(2, 0, 1, 3).reshape(N, B, C)
+        x = (attn @ v).transpose([2, 0, 1, 3]).reshape([N, B, C])
         x = self.proj(x)
         return x, pre_kv
 
@@ -57,7 +77,8 @@ def update_reference_points_xy(output_signals, reference_points, id_step):
     if id_step < 2:
         new_reference_points = inverse_sigmoid(reference_points)
         new_reference_points[:, :, id_step] += output_signals[-1]
-        new_reference_points = new_reference_points.sigmoid()
+        # new_reference_points = new_reference_points.sigmoid()
+        new_reference_points = F.sigmoid(new_reference_points)
         return new_reference_points
     else:
         return reference_points
@@ -117,8 +138,8 @@ class UnifiedSeqHead(DeformableDecoderLayer):
     def self_attn_forward(self, tgt, query_pos, **kwargs):
         # q = k = self.with_pos_embed(tgt, query_pos_self)
         bs, l, c = tgt.shape
-        tgt2, self.pre_kv = self.self_attn(tgt.view(1, bs*l, c), pre_kv=self.pre_kv)
-        return tgt2.view(bs, l, c)
+        tgt2, self.pre_kv = self.self_attn(tgt.reshape([1, bs*l, c]), pre_kv=self.pre_kv)
+        return tgt2.reshape([bs, l, c])
 
     def forward(self, feat, query_pos, reference_points, srcs, src_padding_masks, **kwargs):
         # feat: cs_all, nobj, c
@@ -160,7 +181,8 @@ class UnifiedSeqHead(DeformableDecoderLayer):
                 old_cs = feat.shape[0]
                 feat = feat[:count_needs]
                 reference_points = reference_points[:count_needs]
-                self.pre_kv = self.pre_kv.unflatten(1, (old_cs, nobj))[:, :count_needs].flatten(1,2)
+                # self.pre_kv = self.pre_kv.unflatten(1, (old_cs, nobj))[:, :count_needs].flatten(1, 2)
+                self.pre_kv = custom_unflatten(self.pre_kv, 1, (old_cs, nobj))[:, :count_needs].flatten(1, 2)
                 self.cross_attn.value = self.cross_attn.value[:count_needs]
                 kwargs["src_valid_ratios"] = kwargs["src_valid_ratios"][:count_needs]
 
@@ -194,7 +216,8 @@ class UnifiedSeqHead(DeformableDecoderLayer):
         elif self.combine_method == "add":
             return outputs_logits.sigmoid() + previous_logits.sigmoid()
         elif self.combine_method == "multiple":
-            return inverse_sigmoid(outputs_logits.sigmoid() * previous_logits.sigmoid())
+            # return inverse_sigmoid(outputs_logits.sigmoid() * previous_logits.sigmoid())
+            return inverse_sigmoid(F.sigmoid(outputs_logits) * F.sigmoid(previous_logits))
         else:
             raise KeyError
 

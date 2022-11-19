@@ -16,8 +16,9 @@ Modules to compute the matching cost and solve the corresponding LSAP.
 """
 import paddle
 from scipy.optimize import linear_sum_assignment
+from scipy.spatial.distance import cdist
 from paddle import nn
-
+import paddle.nn.functional as F
 import numpy as np
 from util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou
 
@@ -39,9 +40,9 @@ def joint_oks(src_joints, tgt_joints, tgt_bboxes, joint_sigmas=KPS_OKS_SIGMAS, w
     #     assert src_joints.size(1) == tgt_joints.size(1) + 1
     #     tgt_center = tgt_bboxes[..., 0:2]
     #     sigma_center = joint_sigmas.mean()
-    #     tgt_joints = paddle.cat([tgt_joints, tgt_center[:, None, :]], dim=1)
+    #     tgt_joints = paddle.concat([tgt_joints, tgt_center[:, None, :]], axis=1)
     #     joint_sigmas = np.append(joint_sigmas, np.array([sigma_center]), axis=0)
-    #     tgt_flags = paddle.cat([tgt_flags, paddle.ones([num_gts, 1]).type_as(tgt_flags)], dim=1)
+    #     tgt_flags = paddle.concat([tgt_flags, paddle.ones([num_gts, 1]).type_as(tgt_flags)], axis=1)
     #     num_kpts = num_kpts + 1
 
     areas = tgt_areas.unsqueeze(1).expand(num_gts, num_kpts)
@@ -84,13 +85,13 @@ class HungarianMatcher(nn.Layer):
 
         Params:
             outputs: This is a dict that contains at least these entries:
-                 "pred_logits": Tensor of dim [batch_size, num_queries, num_classes] with the classification logits
-                 "pred_boxes": Tensor of dim [batch_size, num_queries, 4] with the predicted box coordinates
+                 "pred_logits": Tensor of axis [batch_size, num_queries, num_classes] with the classification logits
+                 "pred_boxes": Tensor of axis [batch_size, num_queries, 4] with the predicted box coordinates
 
             targets: This is a list of targets (len(targets) = batch_size), where each target is a dict containing:
-                 "labels": Tensor of dim [num_target_boxes] (where num_target_boxes is the number of ground-truth
+                 "labels": Tensor of axis [num_target_boxes] (where num_target_boxes is the number of ground-truth
                            objects in the target) containing the class labels
-                 "boxes": Tensor of dim [num_target_boxes, 4] containing the target box coordinates
+                 "boxes": Tensor of axis [num_target_boxes, 4] containing the target box coordinates
 
             match_args
 
@@ -110,20 +111,21 @@ class HungarianMatcher(nn.Layer):
 
             # We flatten to compute the cost matrices in a batch
             out_logit = outputs["pred_logits"].flatten(0, 1) # [batch_size * num_queries]
-            out_prob = out_logit.sigmoid()
+            # out_prob = out_logit.sigmoid()
+            out_prob = F.sigmoid(out_logit)
             if with_boxes:
                 out_bbox = outputs["pred_boxes"].flatten(0, 1)  # [batch_size * num_queries, 4]
             if with_keypoints:
                 out_keypoints = outputs["pred_keypoints"].flatten(0, 1)
 
             # Also concat the target labels and boxes
-            # tgt_ids = paddle.cat([v["labels"] for v in targets])
+            # tgt_ids = paddle.concat([v["labels"] for v in targets])
             tgt_bbox = paddle.concat([v["boxes"] for v in targets])
             sizes = [t["boxes"].shape[0] for t in targets]
             num_local = sum(sizes)
 
             if num_local == 0:
-                return [(paddle.as_tensor([], dtype=paddle.int64), paddle.as_tensor([], dtype=paddle.int64)) for _ in sizes]
+                return [(paddle.to_tensor([], dtype=paddle.int64), paddle.to_tensor([], dtype=paddle.int64)) for _ in sizes]
 
             assert ("loss_bce" in weight_dict) ^ ("loss_ce" in weight_dict)
             # Compute the classification cost.
@@ -136,17 +138,22 @@ class HungarianMatcher(nn.Layer):
                 pos_cost_class = alpha * ((1 - out_prob) ** gamma) * (-(out_prob + 1e-8).log())
                 cost_class = pos_cost_class - neg_cost_class # [batch_size * num_queries]
                 cost_class = cost_class * weight_dict["loss_ce"]
-            cost_class = cost_class[..., None].repeat(1, num_local)
+            cost_class = cost_class[..., None].tile([1, num_local])
 
             C = cost_class / NORMALIZER[self.class_normalization]
 
             if with_boxes:
                 # Compute the L1 cost between boxes
-                cost_bbox = paddle.cdist(out_bbox, tgt_bbox, p=1) / NORMALIZER[self.box_normalization]
+                # cost_bbox = paddle.cdist(out_bbox, tgt_bbox, p=1) / NORMALIZER[self.box_normalization]
+                x_np = out_bbox.cpu().numpy().copy()
+                y_np = tgt_bbox.cpu().numpy().copy()
+                # cost_bbox = cdist(x_np, y_np, p=1) / NORMALIZER[self.box_normalization] # scipy 1.6
+                cost_bbox = cdist(x_np, y_np) / NORMALIZER[self.box_normalization]
+                cost_bbox = paddle.to_tensor(cost_bbox)
 
                 # Compute the giou cost betwen boxes
                 cost_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_bbox),
-                                                box_cxcywh_to_xyxy(tgt_bbox)) / NORMALIZER[self.box_normalization]
+                                                 box_cxcywh_to_xyxy(tgt_bbox)) / NORMALIZER[self.box_normalization]
                 # Final cost matrix
                 C_box = weight_dict["loss_bbox"] * cost_bbox + weight_dict["loss_giou"] * cost_giou
                 C = C + C_box
@@ -155,7 +162,7 @@ class HungarianMatcher(nn.Layer):
                 tgt_kps = paddle.concat([v["keypoints"] for v in targets])# tgt, 17, 3
                 tgt_visible = tgt_kps[..., -1] # tgt, 17
                 tgt_kps = tgt_kps[..., :2] # tgt, 17, 2
-                tgt_visible = (tgt_visible > 0) * (tgt_kps >= 0).all(dim=-1) * (tgt_kps <= 1).all(dim=-1) # # tgt, 17
+                tgt_visible = (tgt_visible > 0) * (tgt_kps >= 0).all(axis=-1) * (tgt_kps <= 1).all(axis=-1) # # tgt, 17
                 if "loss_kps_l1" in weight_dict:
                     out_kps = out_keypoints.unsqueeze(1) # bs*nobj, 1, 17, 2
                     tgt_kps_t = tgt_kps.unsqueeze(0) # 1, tgt, 17, 2
@@ -170,15 +177,15 @@ class HungarianMatcher(nn.Layer):
 
                 if "loss_oks" in weight_dict:
                     # Compute the relative oks cost between joints
-                    cat_tgt_kps = paddle.concat([tgt_kps, tgt_visible.unsqueeze(-1)], dim=-1)
+                    cat_tgt_kps = paddle.concat([tgt_kps, tgt_visible.unsqueeze(-1)], axis=-1)
                     cost_oks = -joint_oks(out_keypoints, cat_tgt_kps, tgt_bbox)
                     C_kps_oks = weight_dict["loss_oks"] * cost_oks / NORMALIZER[self.oks_normalization]
                     C = C + C_kps_oks
 
-            C = C.view(bs, num_queries, -1).cpu()
+            C = C.reshape([bs, num_queries, -1]).cpu()
 
             indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C.split(sizes, -1))]
-            return [(paddle.as_tensor(i, dtype=paddle.int64), paddle.as_tensor(j, dtype=paddle.int64)) for i, j in indices]
+            return [(paddle.to_tensor(i, dtype=paddle.int64), paddle.to_tensor(j, dtype=paddle.int64)) for i, j in indices]
 
 
 def build_matcher(args):

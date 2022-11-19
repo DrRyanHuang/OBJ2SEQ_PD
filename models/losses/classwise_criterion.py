@@ -5,8 +5,7 @@
 import paddle
 from paddle import nn
 
-from util.misc import (nested_tensor_from_tensor_list, interpolate,
-                       is_main_process, get_world_size, is_dist_avail_and_initialized)
+from util.misc import get_world_size, is_dist_avail_and_initialized
 from util.task_category import TaskCategory
 
 from .unified_single_class_criterion import UnifiedSingleClassCriterion
@@ -29,7 +28,8 @@ class ClasswiseCriterion(nn.Layer):
         # targets:
         loss_dicts_all = []
         for tKey, output in outputs.items():
-            device = output['pred_logits'].device
+            # device = output['pred_logits'].device
+            device = None
             cs_all, num_obj = output['pred_logits'].shape
             num_boxes = self.get_num_boxes(targets, device)
             num_pts = self.get_num_pts(targets, device) if self.need_keypoints else 1
@@ -48,7 +48,7 @@ class ClasswiseCriterion(nn.Layer):
                 else:
                     for key in task_info.required_targets:
                         default_shape = task_info.required_targets[key]
-                        tgtThis[key] = paddle.zeros(default_shape, device=device)
+                        tgtThis[key] = paddle.zeros(default_shape)
                 target.append(tgtThis)
 
             # TODO: form class of the same task into a batch
@@ -66,20 +66,20 @@ class ClasswiseCriterion(nn.Layer):
     def get_num_boxes(self, targets, device):
         # Compute the average number of target boxes accross all nodes, for normalization purposes
         num_boxes = sum(sum(t[key]['boxes'].shape[0] for key in t if isinstance(key, int)) for t in targets)
-        num_boxes = paddle.as_tensor([num_boxes], dtype=paddle.float, device=device)
+        num_boxes = paddle.to_tensor([num_boxes], dtype=paddle.float32)
         if is_dist_avail_and_initialized():
             paddle.distributed.all_reduce(num_boxes)
-        num_boxes = paddle.clamp(num_boxes / get_world_size(), min=1).item()
+        num_boxes = paddle.clip(num_boxes / get_world_size(), min=1).item()
         return num_boxes
 
     def get_num_pts(self, targets, device):
         kps = [t[0]["keypoints"] for t in targets if 0 in t]
         if len(kps) > 0:
-            kps = paddle.cat(kps, dim=0)
-            kps = (kps[..., 2] > 0) * (kps[..., :2] >= 0).all(dim=-1) * (kps[..., :2] <= 1).all(dim=-1)
+            kps = paddle.concat(kps, axis=0)
+            kps = (kps[..., 2] > 0) * (kps[..., :2] >= 0).all(axis=-1) * (kps[..., :2] <= 1).all(axis=-1)
             num_pts = kps.sum()
         else:
-            num_pts = paddle.as_tensor(0., device=device)
+            num_pts = paddle.to_tensor(0.)
         if is_dist_avail_and_initialized():
             paddle.distributed.all_reduce(num_pts)
         num_pts = paddle.clamp(num_pts / get_world_size(), min=1).item()
@@ -88,7 +88,7 @@ class ClasswiseCriterion(nn.Layer):
     def get_num_people(self, targets, device):
         # Compute the average number of target boxes accross all nodes, for normalization purposes
         num_people = sum(t[0]['boxes'].shape[0] for t in targets if 0 in t)
-        num_people = paddle.as_tensor([num_people], dtype=paddle.float, device=device)
+        num_people = paddle.to_tensor([num_people], dtype=paddle.float32)
         if is_dist_avail_and_initialized():
             paddle.distributed.all_reduce(num_people)
         num_people = paddle.clamp(num_people / get_world_size(), min=1).item()

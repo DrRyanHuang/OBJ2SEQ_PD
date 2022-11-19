@@ -118,7 +118,7 @@ class AsymmetricLossOptimized(nn.Layer):
                 self.loss *= self.asymmetric_w         
         if weights is not None:
             self.loss *= weights
-        _loss = - self.loss.sum() / x.size(0) * (x.numel() / weights.sum())
+        _loss = - self.loss.sum() / x.shape[0] * (x.numel() / weights.sum())
 
         return _loss
 
@@ -131,7 +131,7 @@ class ASLSingleLabel(nn.Layer):
         super(ASLSingleLabel, self).__init__()
 
         self.eps = eps
-        self.logsoftmax = nn.LogSoftmax(dim=-1)
+        self.logsoftmax = nn.LogSoftmax(axis=-1)
         self.targets_classes = []
         self.gamma_pos = gamma_pos
         self.gamma_neg = gamma_neg
@@ -163,7 +163,7 @@ class ASLSingleLabel(nn.Layer):
         # loss calculation
         loss = - self.targets_classes.mul(log_preds)
 
-        loss = loss.sum(dim=-1)
+        loss = loss.sum(axis=-1)
         if self.reduction == 'mean':
             loss = loss.mean()
 

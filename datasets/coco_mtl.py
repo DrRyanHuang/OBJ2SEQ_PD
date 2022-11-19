@@ -206,7 +206,7 @@ class CocoDetection(CocoDetection):
 
         if self.target_transform is not None:
             target = self.target_transform(target)
-        target = target.max(dim=0)[0]
+        target = target.max(axis=0)[0]
         return img, target
 
 

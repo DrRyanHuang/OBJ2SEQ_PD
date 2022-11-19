@@ -53,7 +53,7 @@ class CocoPanoptic:
             ids = np.array([ann['id'] for ann in ann_info['segments_info']])
             masks = masks == ids[:, None, None]
 
-            masks = paddle.as_tensor(masks, dtype=paddle.uint8)
+            masks = paddle.to_tensor(masks, dtype=paddle.uint8)
             labels = paddle.tensor([ann['category_id'] for ann in ann_info['segments_info']], dtype=paddle.int64)
 
         target = {}
@@ -64,8 +64,8 @@ class CocoPanoptic:
 
         target["boxes"] = masks_to_boxes(masks)
 
-        target['size'] = paddle.as_tensor([int(h), int(w)])
-        target['orig_size'] = paddle.as_tensor([int(h), int(w)])
+        target['size'] = paddle.to_tensor([int(h), int(w)])
+        target['orig_size'] = paddle.to_tensor([int(h), int(w)])
         if "segments_info" in ann_info:
             for name in ['iscrowd', 'area']:
                 target[name] = paddle.tensor([ann[name] for ann in ann_info['segments_info']])

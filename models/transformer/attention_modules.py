@@ -17,7 +17,25 @@ import paddle
 import paddle.nn.functional as F
 from paddle import nn
 
-from models.ops.modules import MSDeformAttn
+# from models.ops.modules import MSDeformAttn
+from .ms_deform_attn import MSDeformAttn
+from .ppdet_deformable_transformer import MSDeformableAttention
+
+
+def custom_2_transpose(tensor: paddle.Tensor, dim1: int, dim2: int):
+    # t_shape = tensor.shape
+    t_dim   = tensor.ndim
+    if (t_dim > dim1 >= -t_dim) and (t_dim > dim2 >= -t_dim):
+        if dim1 < 0:
+            dim1 += t_dim
+        if dim2 < 0:
+            dim2 += t_dim
+        new_seq = list(range(t_dim))
+        new_seq[dim1] = dim2
+        new_seq[dim2] = dim1
+        return tensor.transpose(new_seq)
+    else:
+        raise ValueError(f"Value of axis must >= 0 and <= len(tensor.shape)")
 
 
 class BasicEncoderLayer(nn.Layer):
@@ -68,6 +86,7 @@ class BasicEncoderLayer(nn.Layer):
 class DeformableEncoderLayer(BasicEncoderLayer):
     def build_self_attn(self, args):
         self.self_attn = MSDeformAttn(self.d_model, args.n_levels, args.nheads, args.n_points)
+        # self.self_attn = MSDeformableAttention(self.d_model, args.nheads, args.n_levels, args.n_points)
 
     def self_attn_forward(self, src, **kwargs):
         pos = kwargs.pop("pos", None)
@@ -75,7 +94,12 @@ class DeformableEncoderLayer(BasicEncoderLayer):
         spatial_shapes = kwargs.pop("spatial_shapes")
         level_start_index = kwargs.pop("level_start_index")
         padding_mask = kwargs.pop("padding_mask", None)
-        src2 = self.self_attn(self.with_pos_embed(src, pos), reference_points, src, spatial_shapes, level_start_index, padding_mask)
+        src2 = self.self_attn(self.with_pos_embed(src, pos), 
+                              reference_points, 
+                              src, 
+                              spatial_shapes, 
+                              level_start_index, 
+                              padding_mask)
         return src2
 
 
@@ -108,11 +132,12 @@ class BasicDecoderLayer(nn.Layer):
     def self_attn_forward(self, tgt, query_pos, **kwargs):
         if query_pos is not None and query_pos.shape[0] != tgt.shape[0]:
             cs = tgt.shape[0] // query_pos.shape[0]
-            query_pos_self = query_pos.repeat_interleave(repeats=cs, dim=0)
+            query_pos_self = query_pos.repeat_interleave(repeats=cs, axis=0)
         else:
             query_pos_self = query_pos
         q = k = self.with_pos_embed(tgt, query_pos_self)
-        tgt2 = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), tgt.transpose(0, 1))[0].transpose(0, 1)
+        # tgt2 = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), tgt.transpose(0, 1))[0].transpose(0, 1)
+        tgt2 = self.self_attn(q, k, tgt)
         return tgt2
 
     def forward_post(self, tgt, query_pos, **kwargs):
@@ -156,6 +181,10 @@ class BasicDecoderLayer(nn.Layer):
 class MultiHeadDecoderLayer(BasicDecoderLayer):
     def build_cross_attn(self, args):
         self.cross_attn = nn.MultiHeadAttention(self.d_model, self.n_heads, dropout=args.dropout)
+        # self.cross_attn = MSDeformableAttention(self.d_model, 
+        #                                         self.n_heads, 
+        #                                         args.n_levels,
+        #                                         args.n_points)
 
     def cross_attn_forward(self, tgt, query_pos, **kwargs):
         # tgt: 
@@ -170,11 +199,21 @@ class MultiHeadDecoderLayer(BasicDecoderLayer):
 
         src_padding_masks = kwargs.pop("src_padding_masks")
         posemb_2d = kwargs.pop("posemb_2d", 0)
-        query_pos = paddle.zeros_like(tgt) if query_pos is None else query_pos.repeat(1,cs,1)
-        tgt2 = self.cross_attn((tgt + query_pos).transpose(0, 1),
-                                (srcs + posemb_2d).reshape(bs, -1, c).transpose(0,1),
-                                srcs.reshape(bs, -1, c).transpose(0, 1), key_padding_mask=src_padding_masks.reshape(bs, -1))[0].transpose(0,1)
-        return tgt2.reshape(bs_all, seq, c)
+        query_pos = paddle.zeros_like(tgt) if query_pos is None else query_pos.tile([1, cs, 1])
+        # tgt2 = self.cross_attn((tgt + query_pos).transpose(0, 1),
+        #                        (srcs + posemb_2d).reshape(bs, -1, c).transpose(0,1),
+        #                        srcs.reshape(bs, -1, c).transpose(0, 1), 
+        #                        key_padding_mask=src_padding_masks.reshape([bs, -1]))[0].transpose(0, 1)
+        
+        tgt2 = self.cross_attn(tgt + query_pos,
+                               (srcs + posemb_2d).reshape([bs, -1, c]),
+                               srcs.reshape([bs, -1, c]),
+                               attn_mask=src_padding_masks.reshape([bs, -1]))
+        # tgt2 = custom_2_transpose(tgt2, 0, 1)
+
+                    
+        # return tgt2.reshape([bs_all, seq, c])
+        return tgt2
 
     def forward(self, tgt, query_pos, reference_points, srcs, src_padding_masks, **kwargs):
         return super().forward(tgt, query_pos, srcs=srcs, src_padding_masks=src_padding_masks, **kwargs)
@@ -204,12 +243,12 @@ class DeformableDecoderLayer(BasicDecoderLayer):
         # reference_points: bs / bs_all, seq, 2 or 4
         src_valid_ratios = kwargs.pop("src_valid_ratios") # bs, level, 2
         if reference_points.shape[-1] == 4:
-            src_valid_ratios = paddle.concat([src_valid_ratios, src_valid_ratios], dim=-1)
+            src_valid_ratios = paddle.concat([src_valid_ratios, src_valid_ratios], axis=-1)
         # if the number of reference_points and number of src_valid_ratios not match.
         # Expand and repeat for them
         if src_valid_ratios.shape[0] != reference_points.shape[0]:
             repeat_times = (reference_points.shape[0] // src_valid_ratios.shape[0])
-            src_valid_ratios = src_valid_ratios.repeat_interleave(repeat_times, dim=0)
+            src_valid_ratios = src_valid_ratios.repeat_interleave(repeat_times, axis=0)
         src_valid_ratios = src_valid_ratios[:, None] if reference_points.dim() == 3 else src_valid_ratios[:, None, None]
         reference_points_input = reference_points[..., None, :] * src_valid_ratios
         return super().forward(tgt, query_pos, reference_points=reference_points_input, srcs=srcs, src_padding_masks=src_padding_masks, **kwargs)

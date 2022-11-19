@@ -32,7 +32,7 @@ from .ppdet_transformer_position_encoding import PositionEmbedding
 from .ppdet_transformer_utils import _get_clones, deformable_attention_core_func
 from .ppdet_initializer import linear_init_, constant_, xavier_uniform_, normal_
 
-__all__ = ['DeformableTransformer']
+# __all__ = ['DeformableTransformer']
 
 
 
@@ -418,6 +418,7 @@ class DeformableTransformerEncoderLayer(nn.Layer):
         return src
 
 
+
 class DeformableTransformerEncoder(nn.Layer):
     def __init__(self, encoder_layer, num_layers):
         super(DeformableTransformerEncoder, self).__init__()
@@ -458,6 +459,9 @@ class DeformableTransformerEncoder(nn.Layer):
                            pos_embed)
 
         return output
+
+
+
 
 
 class DeformableTransformerDecoderLayer(nn.Layer):
@@ -565,7 +569,7 @@ class DeformableTransformerDecoder(nn.Layer):
         return output.unsqueeze(0)
 
 
-@register
+
 class DeformableTransformer(nn.Layer):
     __shared__ = ['hidden_dim']
 

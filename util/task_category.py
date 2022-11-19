@@ -33,8 +33,8 @@ class TaskCategory():
                 currentIndex += 1
                 all_cats += num_cats[currentIndex]
             self.id_to_index.append(currentIndex)
-        # self.id_to_index = paddle.LongTensor(self.id_to_index)
-        self.id_to_index = np.array(self.id_to_index, dtype=np.int64)
+        self.id_to_index = paddle.to_tensor(self.id_to_index, dtype=np.int64)
+        # self.id_to_index = np.array(self.id_to_index, dtype=np.int64)
 
     def __getitem__(self, tId):
         if isinstance(tId, int):
@@ -62,7 +62,11 @@ class TaskCategory():
     def arrangeBySteps(self, cls_idx, *args):
         tIds = [self.id_to_index[ic] for ic in cls_idx]
         nSteps = paddle.to_tensor([self.tasks[tId].num_steps for tId in tIds])
-        nSteps, indices = nSteps.sort(descending=True)
+        
+        # nSteps, indices = nSteps.sort(descending=True)
+        indices = nSteps.argsort(descending=True)
+        nSteps = nSteps.sort(descending=True)
+        
         return (nSteps, cls_idx[indices], *[a[indices] if a is not None else None for a in args])
 
     def getNumSteps(self, cls_idx, *args):

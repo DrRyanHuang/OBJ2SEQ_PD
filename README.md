@@ -1,6 +1,8 @@
 **Obj2Seq**: Formatting Objects as Sequences with Class Prompt for Visual Tasks
 ========
 
+#### A paddlepaddle implementation of Obj2Seq.
+
 ## Introduction
 This repository is an official implementation of the **[Obj2Seq](https://arxiv.org/abs/2209.13948)**.
 Obj2Seq takes objects as basic units, and regards most object-level visual tasks as sequence generation problems of objects.

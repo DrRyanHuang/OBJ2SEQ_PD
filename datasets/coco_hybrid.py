@@ -171,7 +171,7 @@ class ConvertCocoPolysToMask(object):
         w, h = image.size
 
         image_id = target["image_id"]
-        image_id = paddle.tensor([image_id])
+        image_id = paddle.to_tensor([image_id])
 
         anno = target["annotations"]
         multi_labels = [self.json_category_id_to_contiguous_id[item["category_id"]] for item in anno]
@@ -189,7 +189,7 @@ class ConvertCocoPolysToMask(object):
 
         classes = [obj["category_id"] for obj in anno]
         classes = [self.json_category_id_to_contiguous_id[c] for c in classes]
-        classes = paddle.tensor(classes, dtype=paddle.int64)
+        classes = paddle.to_tensor(classes, dtype=paddle.int64)
 
         if self.return_masks:
             segmentations = [obj["segmentation"] for obj in anno]
@@ -222,8 +222,8 @@ class ConvertCocoPolysToMask(object):
             target["keypoints"] = keypoints
 
         # for conversion to coco api
-        area = paddle.tensor([obj["area"] for obj in anno])
-        iscrowd = paddle.tensor([obj["iscrowd"] if "iscrowd" in obj else 0 for obj in anno])
+        area = paddle.to_tensor([obj["area"] for obj in anno])
+        iscrowd = paddle.to_tensor([obj["iscrowd"] if "iscrowd" in obj else 0 for obj in anno])
         target["area"] = area[keep]
         target["iscrowd"] = iscrowd[keep]
 

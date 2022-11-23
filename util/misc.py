@@ -88,7 +88,7 @@ class SmoothedValue(object):
         """
         if not is_dist_avail_and_initialized():
             return
-        t = paddle.tensor([self.count, self.total], dtype=paddle.float64, device='cuda')
+        t = paddle.to_tensor([self.count, self.total], dtype=paddle.float64)
         dist.barrier()
         dist.all_reduce(t)
         t = t.tolist()
@@ -97,12 +97,12 @@ class SmoothedValue(object):
 
     @property
     def median(self):
-        d = paddle.tensor(list(self.deque))
+        d = paddle.to_tensor(list(self.deque))
         return d.median().item()
 
     @property
     def avg(self):
-        d = paddle.tensor(list(self.deque), dtype=paddle.float32)
+        d = paddle.to_tensor(list(self.deque), dtype=paddle.float32)
         return d.mean().item()
 
     @property
@@ -144,8 +144,8 @@ def all_gather(data):
     tensor = paddle.ByteTensor(storage).to("cuda")
 
     # obtain Tensor size of each rank
-    local_size = paddle.tensor([tensor.numel()], device="cuda")
-    size_list = [paddle.tensor([0], device="cuda") for _ in range(world_size)]
+    local_size = paddle.to_tensor([tensor.numel()])
+    size_list = [paddle.to_tensor([0]) for _ in range(world_size)]
     dist.all_gather(size_list, local_size)
     size_list = [int(size.item()) for size in size_list]
     max_size = max(size_list)
@@ -155,9 +155,9 @@ def all_gather(data):
     # gathering tensors of different shapes
     tensor_list = []
     for _ in size_list:
-        tensor_list.append(paddle.empty((max_size,), dtype=paddle.uint8, device="cuda"))
+        tensor_list.append(paddle.empty((max_size,), dtype=paddle.uint8))
     if local_size != max_size:
-        padding = paddle.empty(size=(max_size - local_size,), dtype=paddle.uint8, device="cuda")
+        padding = paddle.empty(size=(max_size - local_size,), dtype=paddle.uint8)
         tensor = paddle.concat((tensor, padding), axis=0)
     dist.all_gather(tensor_list, tensor)
 
@@ -268,12 +268,13 @@ class MetricLogger(object):
             if i % print_freq == 0 or i == len(iterable) - 1:
                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
-                if paddle.cuda.is_available():
+                # if paddle.cuda.is_available():
+                if True:
                     print(log_msg.format(
                         i, len(iterable), eta=eta_string,
                         meters=str(self),
                         time=str(iter_time), data=str(data_time),
-                        memory=paddle.cuda.max_memory_allocated() / MB))
+                        memory=paddle.device.cuda.max_memory_allocated() / MB))
                 else:
                     print(log_msg.format(
                         i, len(iterable), eta=eta_string,
@@ -336,7 +337,7 @@ def nested_tensor_from_tensor_list(tensor_list: List[Tensor], fix_input=None, in
         batch_shape = [len(tensor_list)] + max_size
         b, c, h, w = batch_shape
         dtype = tensor_list[0].dtype
-        # device = tensor_list[0].device # paddle.Tensor no device
+        # device = tensor_list[0].device # paddle.to_tensor no device
         tensor = paddle.zeros(batch_shape, dtype=dtype)
         mask = paddle.ones((b, h, w), dtype="bool")
         for id_, (img, pad_img, m) in enumerate(zip(tensor_list, tensor, mask)):
@@ -536,8 +537,8 @@ def accuracy(output, target, topk=(1,)):
 def get_total_grad_norm(parameters, norm_type=2):
     parameters = list(filter(lambda p: p.grad is not None, parameters))
     norm_type = float(norm_type)
-    device = parameters[0].grad.device
-    total_norm = paddle.norm(paddle.stack([paddle.norm(p.grad.detach(), norm_type).to(device) for p in parameters]),
+    # device = parameters[0].grad.device
+    total_norm = paddle.norm(paddle.stack([paddle.norm(p.grad.detach(), norm_type) for p in parameters]),
                             norm_type)
     return total_norm
 

@@ -61,7 +61,7 @@ class LinearClassifier(AbstractClassifier):
         super().__init__(args)
 
         self.hidden_dim = args.hidden_dim
-        self.W = nn.Parameter(paddle.Tensor(self.hidden_dim))
+        self.W = nn.Parameter(paddle.to_tensor(self.hidden_dim))
         stdv = 1. / math.sqrt(self.W.size(0))
         self.W.data.uniform_(-stdv, stdv)
 

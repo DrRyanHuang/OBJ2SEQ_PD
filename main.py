@@ -147,12 +147,19 @@ def build_optimizer(cfg_train, model_without_ddp, steps_per_epoch=None):
     else:
         raise KeyError
     
+    if cfg_train.clip_max_norm > 0:
+        clip = paddle.nn.ClipGradByGlobalNorm(clip_norm=cfg_train.clip_max_norm)
+    else:
+        clip = None
+        
     if cfg_train.sgd:
         optimizer = paddle.optimizer.SGD(parameters=param_dicts, learning_rate=lr_scheduler, momentum=0.9,
-                                    weight_decay=cfg_train.weight_decay)
+                                    weight_decay=cfg_train.weight_decay,
+                                    grad_clip=clip)
     else:
         optimizer = paddle.optimizer.AdamW(parameters=param_dicts, learning_rate=lr_scheduler,
-                                      weight_decay=cfg_train.weight_decay)
+                                      weight_decay=cfg_train.weight_decay,
+                                      grad_clip=clip)
         
     return optimizer, lr_scheduler
 

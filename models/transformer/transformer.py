@@ -30,7 +30,7 @@ class Transformer(nn.Layer):
         self.encoder = build_encoder(args) if args.enc_layers > 0 else None
         self.position_embed = build_position_encoding(args)
         if self.encoder is not None:
-            # self.level_embed = nn.Parameter(paddle.Tensor(args.num_feature_levels, self.d_model))
+            # self.level_embed = nn.Parameter(paddle.to_tensor(args.num_feature_levels, self.d_model))
             self.level_embed = paddle.static.create_parameter((args.num_feature_levels, self.d_model), dtype="float32")
             nn.initializer.Normal()(self.level_embed)
 

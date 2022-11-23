@@ -46,7 +46,7 @@ def joint_oks(src_joints, tgt_joints, tgt_bboxes, joint_sigmas=KPS_OKS_SIGMAS, w
     #     num_kpts = num_kpts + 1
 
     areas = tgt_areas.unsqueeze(1).expand(num_gts, num_kpts)
-    sigmas = paddle.tensor(joint_sigmas).type_as(tgt_joints)
+    sigmas = paddle.to_tensor(joint_sigmas).type_as(tgt_joints)
     sigmas_sq = paddle.square(2 * sigmas).unsqueeze(0).expand(num_gts, num_kpts)
     d_sq = paddle.square(src_joints.unsqueeze(1) - tgt_joints.unsqueeze(0)).sum(-1)
     tgt_flags = tgt_flags.unsqueeze(0).expand(*d_sq.shape)

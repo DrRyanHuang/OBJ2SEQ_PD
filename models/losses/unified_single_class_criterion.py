@@ -118,6 +118,9 @@ class UnifiedSingleClassCriterion(nn.Layer):
         idx = self._get_src_permutation_idx(indices)
         src_boxes = outputs['pred_boxes'][idx]
         
+        if src_boxes.ndim == 1:
+            src_boxes = src_boxes[None]
+        
         # target_boxes = paddle.concat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], axis=0)
         temp_list = []
         for t, (_, i) in zip(targets, indices):
@@ -161,7 +164,7 @@ class UnifiedSingleClassCriterion(nn.Layer):
         #     sigmas = np.append(sigmas, np.array([sigma_center]), axis=0)
         #     tgt_flags = paddle.concat([tgt_flags, paddle.ones([tgt_flags.size(0), 1]).type_as(tgt_flags)], axis=1)
 
-        sigmas = paddle.tensor(sigmas).type_as(tgt_joints)
+        sigmas = paddle.to_tensor(sigmas).type_as(tgt_joints)
         d_sq = paddle.square(src_joints - tgt_joints).sum(-1)
         loss_oks = 1 - paddle.exp(-1 * d_sq / (2 * tgt_areas[:, None] * sigmas[None, :] + 1e-15))
         # loss_oks = loss_oks * tgt_flags * with_joint_flag[:, None]

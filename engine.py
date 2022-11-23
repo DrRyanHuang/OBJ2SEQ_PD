@@ -34,7 +34,7 @@ def convert_to_device(src, device):
         return [convert_to_device(item, device) for item in src]
     elif isinstance(src, dict):
         return {k: convert_to_device(v, device) for k, v in src.items()}
-    elif isinstance(src, paddle.Tensor):
+    elif isinstance(src, paddle.to_tensor):
         # return src.to(device)
         return src
 
@@ -74,19 +74,20 @@ def train_one_epoch(model: nn.Layer, data_loader: Iterable, optimizer: paddle.op
             print(loss_dict_reduced)
             sys.exit(1)
 
-        optimizer.zero_grad()
+        optimizer.clear_grad()
         losses.backward()
-        if max_norm > 0:
-            grad_total_norm = paddle.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
-        else:
-            grad_total_norm = utils.get_total_grad_norm(model.parameters(), max_norm)
+        # if max_norm > 0:
+        #     grad_total_norm = paddle.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+        # else:
+        #     grad_total_norm = utils.get_total_grad_norm(model.parameters(), max_norm)
+        grad_total_norm = utils.get_total_grad_norm(model.parameters())
         optimizer.step()
 
         metric_logger.update(loss=loss_value, det_loss=det_loss, **loss_dict_reduced)
         # metric_logger.update(loss=loss_value)
         # metric_logger.update(class_error=loss_dict_reduced['class_error'])
-        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-        metric_logger.update(grad_norm=grad_total_norm)
+        metric_logger.update(lr=optimizer._param_groups[0]["lr"])
+        metric_logger.update(grad_norm=grad_total_norm.item())
 
         samples, targets = prefetcher.next()
     # gather the stats from all processes

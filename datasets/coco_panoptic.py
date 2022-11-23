@@ -54,10 +54,10 @@ class CocoPanoptic:
             masks = masks == ids[:, None, None]
 
             masks = paddle.to_tensor(masks, dtype=paddle.uint8)
-            labels = paddle.tensor([ann['category_id'] for ann in ann_info['segments_info']], dtype=paddle.int64)
+            labels = paddle.to_tensor([ann['category_id'] for ann in ann_info['segments_info']], dtype=paddle.int64)
 
         target = {}
-        target['image_id'] = paddle.tensor([ann_info['image_id'] if "image_id" in ann_info else ann_info["id"]])
+        target['image_id'] = paddle.to_tensor([ann_info['image_id'] if "image_id" in ann_info else ann_info["id"]])
         if self.return_masks:
             target['masks'] = masks
         target['labels'] = labels
@@ -68,7 +68,7 @@ class CocoPanoptic:
         target['orig_size'] = paddle.to_tensor([int(h), int(w)])
         if "segments_info" in ann_info:
             for name in ['iscrowd', 'area']:
-                target[name] = paddle.tensor([ann[name] for ann in ann_info['segments_info']])
+                target[name] = paddle.to_tensor([ann[name] for ann in ann_info['segments_info']])
 
         if self.transforms is not None:
             img, target = self.transforms(img, target)
